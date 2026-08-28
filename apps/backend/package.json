@@ -1,0 +1,21 @@
+{
+  "name": "backend",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "@types/mongoose": "^5.11.97",
+    "@types/ws": "^8.18.1",
+    "commons": "*",
+    "db": "*",
+    "mongoose": "^9.9.3",
+    "uuidv4": "^6.2.13",
+    "ws": "^8.21.3"
+  }
+}
