@@ -1,6 +1,19 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Streamdown ships Tailwind utility classes inside its bundle, so Tailwind has
+   to scan it or the rendered markdown comes out unstyled. Path is relative to
+   this file; streamdown resolves under apps/frontend/node_modules. */
+@source "../node_modules/streamdown/dist/*.js";
+
+/* Assistant turns span the full column so code blocks, tables and tool output
+   get the width they need. Prose is capped separately here: a coding transcript
+   is mostly code, but 200-character text lines are still unreadable. Applies to
+   text-level elements only, so `pre` and `table` stay full width. */
+.transcript-prose :where(p, ul, ol, h1, h2, h3, h4, h5, h6, blockquote) {
+  max-width: 70ch;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
