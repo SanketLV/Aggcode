@@ -2,7 +2,51 @@ import { WebSocket } from "ws";
 import { User } from "./User";
 import { uuid } from "uuidv4";
 import { SessionModel, WorkspaceModel } from "db/client";
-import type { Workspace } from "commons/types";
+import type { MessagePart, Workspace } from "commons/types";
+
+// The stored subdocument keeps both part kinds in one flat shape, so narrow it
+// back to the discriminated union on the way out. Unknown kinds are dropped
+// rather than shipped as malformed parts.
+type StoredPart = {
+  type?: string | null;
+  text?: string | null;
+  toolId?: string | null;
+  name?: string | null;
+  detail?: string | null;
+  status?: string | null;
+  output?: string | null;
+};
+
+function toMessageParts(
+  stored: StoredPart[] | null | undefined,
+): MessagePart[] | undefined {
+  if (!stored || stored.length === 0) {
+    return undefined;
+  }
+
+  const parts = stored.flatMap<MessagePart>((part) => {
+    if (part.type === "text") {
+      return [{ type: "text", text: part.text ?? "" }];
+    }
+    if (part.type === "tool") {
+      return [
+        {
+          type: "tool",
+          toolId: part.toolId ?? "",
+          name: part.name ?? "",
+          detail: part.detail ?? "",
+          // Rows written before tools carried a status are finished by
+          // definition. Nothing stored can still be running.
+          status: part.status === "error" ? "error" : "done",
+          ...(part.output ? { output: part.output } : {}),
+        },
+      ];
+    }
+    return [];
+  });
+
+  return parts.length > 0 ? parts : undefined;
+}
 
 export class UserManager {
   private users: User[];
@@ -31,7 +75,10 @@ export class UserManager {
       try {
         const parsedMessage = JSON.parse(msg.toString());
         const responsePayload = await user.handleIncomingMessage(parsedMessage);
-        user.sendMessage(responsePayload);
+        // Null means the branch already sent its own frames (see `add-message`).
+        if (responsePayload) {
+          user.sendMessage(responsePayload);
+        }
       } catch (error) {
         console.log(msg.toString());
         console.error(error);
@@ -64,9 +111,17 @@ export class UserManager {
         .filter((s) => s.workspace?.toString() === w._id.toString())
         .map((s) => ({
           id: s._id.toString(),
+          // Every field of a stored message has to be mapped through here, or
+          // it silently vanishes on reload while working fine live.
           messages: s.messages.map((m) => ({
-            role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
-            payload: { message: m.payload?.message ?? "" },
+            role:
+              m.role === "assistant"
+                ? ("assistant" as const)
+                : ("user" as const),
+            payload: {
+              message: m.payload?.message ?? "",
+              parts: toMessageParts(m.payload?.parts),
+            },
           })),
         })),
     }));

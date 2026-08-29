@@ -18,19 +18,23 @@ Root (Turborepo):
 
 ```sh
 bun install                 # install all workspaces
-bun run dev                 # turbo run dev  -> frontend only (see caveat)
+bun run dev                 # turbo run dev  -> backend (:3000) + frontend (:3001), both auto-reloading
 bun run build               # turbo run build
 bun run lint                # turbo run lint (currently a no-op for both apps)
 bun run check-types         # turbo run check-types (currently a no-op for both apps)
 bun run format              # prettier --write "**/*.{ts,tsx,md}"
 ```
 
-**Caveat: `apps/backend/package.json` has no `scripts` block**, so `turbo run dev` does not start the backend. Run it directly:
+Either app can also be run on its own:
 
 ```sh
-cd apps/backend && bun --hot index.ts     # WebSocket server on :3000
+cd apps/backend && bun run dev            # bun --watch index.ts, WebSocket server on :3000
 cd apps/frontend && bun run dev           # Bun.serve + React HMR on :3001
 ```
+
+**The backend uses `bun --watch`, not `bun --hot`.** `--watch` restarts the whole process on any change to `index.ts`, `User.ts`, `UserManager.ts`, or the `commons`/`db` packages (they are symlinked raw `.ts`, so edits there restart it too). `--hot` would re-evaluate the module in place and re-run `new WebSocketServer({port: 3000})` against a port the same process still holds, so the second bind emits an unhandled `EADDRINUSE` and the server silently stops accepting connections. Preserving the server across hot reloads would mean stashing it on `globalThis`, which is not worth it while the connection handler is three lines.
+
+A restart drops every open socket, and `useSocket` has no reconnect — so after the backend reloads, the browser needs a refresh. An in-flight agent run also dies with the process; the user message is already persisted (see "Persist before sending"), the assistant reply is not.
 
 The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string>` (see `.env.example`). `mongoose.connect` is the outer promise in `index.ts` — if it rejects, the WebSocket server is never created and the only output is a logged error.
 
@@ -59,8 +63,8 @@ Adding or changing a message means touching **four** places: the schema/union in
 Internal packages expose **only** a subpath, not the package root. Importing the bare package name will fail:
 
 ```ts
-import type { Workspace } from "commons/types";      // packages/commons -> exports "./types"
-import { SessionModel, WorkspaceModel } from "db/client";  // packages/db -> exports "./client"
+import type { Workspace } from "commons/types"; // packages/commons -> exports "./types"
+import { SessionModel, WorkspaceModel } from "db/client"; // packages/db -> exports "./client"
 ```
 
 Dependencies are declared as `"commons": "*"` / `"db": "*"` in each consuming `package.json`.
@@ -89,15 +93,48 @@ Not Next.js. `src/index.ts` is a `Bun.serve` that serves `src/index.html` for `/
 
 ## Message flow, end to end
 
-Only the user side of the conversation exists. There is no agent/assistant layer yet: `Message.role` allows `"assistant"`, but nothing ever writes one.
+`add-message` runs the agent through `@anthropic-ai/claude-agent-sdk`, so **one incoming message can produce several outgoing messages over time**. `handleIncomingMessage` therefore returns `OutgoingMessageType | null`, and `null` means "this branch already sent its own frames" (`UserManager` guards with `if (responsePayload)`).
 
-| Client sends | Server does | Server replies |
-|---|---|---|
-| `create-workspace` `{path}` | derives `name` from the last path segment (splits on `/` **and** `\`), inserts | `workspace-created` `{id,name,path}` |
-| `create-session` `{workspaceId}` | verifies the workspace exists, inserts a session with `messages: []` | `session-created` `{id,workspaceId}` |
-| `add-message` `{sessionId,message}` | `$push` onto `messages` via `findByIdAndUpdate` | `message-added` `{sessionId,message}` |
+| Client sends                        | Server does                                                                    | Server replies                                                                                                                                             |
+| ----------------------------------- | ------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `create-workspace` `{path}`         | derives `name` from the last path segment (splits on `/` **and** `\`), inserts | `workspace-created` `{id,name,path}`                                                                                                                       |
+| `create-session` `{workspaceId}`    | verifies the workspace exists, inserts a session with `messages: []`           | `session-created` `{id,workspaceId}`                                                                                                                       |
+| `add-message` `{sessionId,message}` | persists the user row, echoes it, then runs one agent turn                     | `message-added`, `assistant-working`, then any number of `assistant-delta` / `assistant-tool`, then exactly one of `assistant-message` / `assistant-error` |
 
-`session-created` and `message-added` deliberately echo back the owning `workspaceId` / `sessionId` so the client can place the result without tracking in-flight requests.
+**The run invariant:** every `assistant-working` is followed by exactly one `assistant-message` or `assistant-error` for the same `sessionId`. The client clears its working indicator only on those terminal frames, so `runAgent` guarantees one via an idempotent `settle()` plus a `finally` backstop. Breaking that invariant hangs the UI with a spinner that never stops.
+
+### Streaming and the transcript
+
+An assistant turn is a `MessagePart[]` transcript, not a single string: `{type:"text",text}` blocks interleaved with `{type:"tool",name,detail}` entries, in the order they happened. `payload.message` remains the plain final answer, used for sidebar previews and for rows written before `parts` existed, so **render `parts` when present and fall back to `message`**.
+
+The two SDK message kinds map to different frames, and mixing them up double-renders the reply:
+
+- `stream_event` (needs `includePartialMessages: true`) carries raw Messages API deltas. Only `content_block_delta` with `delta.type === "text_delta"` is forwarded, as `assistant-delta`. This is what makes prose appear as it is written.
+- `assistant` carries _completed_ content blocks. Its text is deliberately **skipped** (the deltas already sent it); only `tool_use` blocks are new information, forwarded as `assistant-tool`.
+- `user` messages are emitted by the CLI for content it adds itself, chiefly the `tool_result` blocks answering each `tool_use`. These become `assistant-tool-result`.
+- `system` / `subtype: "thinking_tokens"` carries a live thinking-token estimate. The SDK documents it as intended for progress indicators, not for billing.
+
+`assistant-tool-result` is **the one frame that mutates an existing part** rather than appending; everything else is append-only. It matches on `toolId` (the API's `tool_use` block id), which is why tool parts carry one. `settle` also flips any part still `running` to `done`, since the turn ending means nothing can still be in flight.
+
+Tool output is capped at 2000 characters before it is stored, or a single `Read` of a large file would bloat the session document.
+
+**Tool-result parsing is defensive on purpose.** The SDK's declared peer `@anthropic-ai/sdk` is _not installed_, so its `MessageParam` import is unresolved and `skipLibCheck: true` hides that. Everything the backend reads out of `message.message.content` is effectively untyped, so `extractToolResults` / `toolResultText` narrow at runtime and never trust the compiler. Installing that peer would restore real types.
+
+`runAgent` accumulates `parts` server-side and persists them once, at settle, so a reload matches what the user watched. `settle` also back-fills a text part from the final result if no delta ever arrived, so a run that only called tools still shows its answer.
+
+Tool `detail` is relativized against the workspace `cwd`; a path _outside_ the workspace stays absolute on purpose, because that is a signal worth seeing.
+
+**Adding a field to a stored message means editing `UserManager.sendInitialState` too.** It maps stored messages field by field, so anything it misses works perfectly live and then vanishes on reload. `parts` shipped broken this exact way once, and the flat mongo subdocument has to be narrowed back to the discriminated union there via `toMessageParts`.
+
+Other rules that path depends on:
+
+- **The user echo is emitted before `query()` is called.** Emitting it after the run (which is what the first agent integration did) both delayed it for the whole run and placed it _below_ the assistant reply.
+- **Persist before sending, always.** A socket that dropped mid-run should cost the live update, never the data.
+- **Failures are not persisted** as assistant rows: an error is not part of the conversation, and storing it would feed it back as context on the next `resume`. So a failed exchange legitimately reloads as a user message with no reply.
+- **`cwd` must never fall back to `undefined`.** The agent runs with `permissionMode: "acceptEdits"` and `Edit` allowed, so an unresolved workspace path would point it at the backend's own directory, i.e. this repo. `add-message` hard-rejects instead.
+- **One run per session at a time,** enforced by a process-wide `activeRuns` set in `User.ts` (so a second browser tab cannot bypass it). Concurrent runs would race on `anthropicSessionId` and interleave writes.
+- **Rejections are reported, not thrown.** `UserManager`'s `catch` only logs, so anything thrown leaves the client with no explanation. Recoverable rejections send `assistant-error`.
+- `session-created` and `message-added` deliberately echo back the owning `workspaceId` / `sessionId` so the client can place the result without tracking in-flight requests.
 
 Two client-side conventions to keep:
 
@@ -113,8 +150,17 @@ Everything lives in `App.tsx` (`App` / `ConnectingShell` / `Sidebar` / `ChatPane
 - **Shape rule:** interactive controls are `rounded-md`, panels and message bubbles are `rounded-lg`.
 - **Icons:** lucide-react only, `strokeWidth={1.5}` via the `ICON_STROKE` constant.
 - **Motion:** colour transitions and one chevron rotation, all with a `motion-reduce:transition-none` companion. No animation library.
-- The shell is `h-[100dvh]` with `min-h-0 flex-1 overflow-y-auto` on the two scroll panes, so the sidebar and the transcript scroll independently instead of the page growing.
+- The shell is `h-dvh` with `min-h-0 flex-1 overflow-y-auto` on the two scroll panes, so the sidebar and the transcript scroll independently instead of the page growing.
 - Every list has a real empty state, and `status !== "open"` disables both composers and shows why.
+- **Markdown comes from Streamdown**, not `react-markdown`: it tolerates the unterminated chunks that token-level streaming produces. It needs three things wired together, and silently renders unstyled if any is missing: the `streamdown` dep, `import "streamdown/styles.css"` in `App.tsx`, and the `@source "../node_modules/streamdown/dist/*.js"` directive in `styles/globals.css` so Tailwind scans its bundle for utility classes. It reuses the shadcn CSS custom properties already defined there.
+- **Assistant turns are unbubbled and full column width** (`AssistantTurn` / `partsOf`); only user turns keep a bubble. A coding transcript is mostly code, and a bubble plus an 80% cap fights that. The column is `max-w-4xl` with `gap-6` between turns, spacing rather than borders doing the separating.
+- **Prose measure is handled in CSS, not Tailwind:** `.transcript-prose :where(p, ul, ol, h1-h6, blockquote) { max-width: 70ch }` in `globals.css`. This is deliberately asymmetric — text stays readable while `pre` and `table` use the full width. Streamdown renders prose and code in one tree, so capping the container would cap code too.
+- **Tool rows are accordions** (`ToolRow`), collapsed by default but auto-expanded while `status === "running"` and auto-collapsed once settled. The pattern is `override ?? part.status === "running"` with `override` as per-row local state, so an explicit click wins from then on. Keyed by React position, not `toolId`, because legacy rows all share an empty id.
+- **`RunIndicator` reports real state,** not a generic label: the running tool if there is one, else the live thinking-token count, plus elapsed seconds. `Elapsed` is its own component so only it re-renders each second. Deliberately no rotating verb and no "esc to interrupt" hint: `Query.interrupt()` only works in streaming-input mode, which this does not use, so the hint would be a lie.
+- **Never re-wrap a `Message` from the wire.** The server sends a complete `{role, payload:{message}}`; append it through `appendMessage()`. Wrapping it a second time makes `payload.message` an object, and `ChatPane` renders it as a React child, which throws and unmounts the whole tree. An `as any` at the append site is what let that ship, so no casts there.
+- **Run state is per session, never global**: `workingSessionIds` and `sessionErrors` are keyed by session id because the sidebar lets you switch sessions while a run is in flight. `ChatPane` reads its own session's entry, and the composer is disabled for that session only.
+- The working indicator and error row are extra `<li>`s inside the same `<ol>`, so they must be in the auto-scroll effect's dependencies or they render below the fold.
+- Losing the socket clears every working indicator, since no terminal frame can arrive. The run does continue server side and its reply reaches Mongo, so it reappears on reload. `useSocket` has no reconnect, so live delivery after a drop is genuinely lossy.
 
 ## Note on the global rules
 
