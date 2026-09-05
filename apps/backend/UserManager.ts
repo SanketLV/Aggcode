@@ -3,6 +3,7 @@ import { User } from "./User";
 import { uuid } from "uuidv4";
 import { SessionModel, WorkspaceModel } from "db/client";
 import type { MessagePart, Workspace } from "commons/types";
+import { getProviderCatalog } from "./providers";
 
 // The stored subdocument keeps both part kinds in one flat shape, so narrow it
 // back to the discriminated union on the way out. Unknown kinds are dropped
@@ -98,9 +99,10 @@ export class UserManager {
   }
 
   private async sendInitialState(user: User) {
-    const [workspaces, sessions] = await Promise.all([
+    const [workspaces, sessions, providers] = await Promise.all([
       WorkspaceModel.find(),
       SessionModel.find(),
+      getProviderCatalog(),
     ]);
 
     const response: Workspace[] = workspaces.map((w) => ({
@@ -111,6 +113,9 @@ export class UserManager {
         .filter((s) => s.workspace?.toString() === w._id.toString())
         .map((s) => ({
           id: s._id.toString(),
+          provider: s.provider ?? "claude",
+          model: s.model ?? undefined,
+          effort: s.effort ?? undefined,
           // Every field of a stored message has to be mapped through here, or
           // it silently vanishes on reload while working fine live.
           messages: s.messages.map((m) => ({
@@ -126,6 +131,6 @@ export class UserManager {
         })),
     }));
 
-    user.sendMessage({ type: "init", workspaces: response });
+    user.sendMessage({ type: "init", workspaces: response, providers });
   }
 }

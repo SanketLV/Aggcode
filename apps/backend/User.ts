@@ -2,6 +2,9 @@ import {
   AddMessageSchema,
   CreateSessionSchema,
   CreateWorkspaceSchema,
+  DeleteSessionSchema,
+  DeleteWorkspaceSchema,
+  UpdateSessionConfigSchema,
   type IncomingMessageType,
   type Message,
   type MessagePart,
@@ -10,7 +13,8 @@ import {
 import { SessionModel, WorkspaceModel } from "db/client";
 import mongoose from "mongoose";
 import { WebSocket } from "ws";
-import { query, type SDKResultError } from "@anthropic-ai/claude-agent-sdk";
+import { getProvider } from "./providers";
+import { buildHandoffTranscript } from "./providers/workspaceContext";
 
 // Workspace paths arrive in whatever form the OS uses, so split on both separators.
 function workspaceNameFromPath(path: string): string {
@@ -18,128 +22,10 @@ function workspaceNameFromPath(path: string): string {
   return segments[segments.length - 1] ?? path;
 }
 
-// Exhaustive by construction: a new SDK error subtype breaks the typecheck
-// instead of reaching the UI as a blank reply.
-const RESULT_ERROR_LABEL: Record<SDKResultError["subtype"], string> = {
-  error_during_execution: "The agent stopped partway through the run.",
-  error_max_turns: "The agent hit its turn limit before finishing.",
-  error_max_budget_usd: "The agent hit its cost limit before finishing.",
-  error_max_structured_output_retries:
-    "The agent could not produce a valid structured result.",
-};
-
 // Guards against two runs racing on one session: they would clobber each
-// other's `anthropicSessionId` and interleave their message writes. Process
-// wide, so a second browser tab cannot bypass it either.
+// other's session IDs and interleave their message writes. Process wide, so a
+// second browser tab cannot bypass it either.
 const activeRuns = new Set<string>();
-
-// Tool inputs are free-form JSON, so pick the field that best identifies the
-// target. Ordered by how specific it is.
-const TOOL_DETAIL_KEYS = [
-  "file_path",
-  "path",
-  "pattern",
-  "command",
-  "url",
-  "query",
-];
-
-const MAX_TOOL_DETAIL = 80;
-
-// Tool output can be a whole file. Cap it so a transcript cannot bloat the
-// session document without bound.
-const MAX_TOOL_OUTPUT = 2000;
-
-type ToolResultLike = {
-  toolId: string;
-  output: string;
-  isError: boolean;
-};
-
-// The SDK's declared peer `@anthropic-ai/sdk` is not installed, so
-// `MessageParam` is unresolved and these blocks arrive effectively untyped.
-// Everything below narrows at runtime rather than trusting the compiler.
-function toolResultText(content: unknown): string {
-  if (typeof content === "string") {
-    return content;
-  }
-  if (!Array.isArray(content)) {
-    return "";
-  }
-  return content
-    .map((block) => {
-      if (typeof block !== "object" || block === null) {
-        return "";
-      }
-      const record = block as Record<string, unknown>;
-      return record.type === "text" && typeof record.text === "string"
-        ? record.text
-        : "";
-    })
-    .filter((text) => text !== "")
-    .join("\n");
-}
-
-function extractToolResults(content: unknown): ToolResultLike[] {
-  if (!Array.isArray(content)) {
-    return [];
-  }
-
-  const results: ToolResultLike[] = [];
-
-  for (const block of content) {
-    if (typeof block !== "object" || block === null) {
-      continue;
-    }
-    const record = block as Record<string, unknown>;
-    if (
-      record.type !== "tool_result" ||
-      typeof record.tool_use_id !== "string"
-    ) {
-      continue;
-    }
-
-    const output = toolResultText(record.content).trim();
-
-    results.push({
-      toolId: record.tool_use_id,
-      output:
-        output.length > MAX_TOOL_OUTPUT
-          ? output.slice(0, MAX_TOOL_OUTPUT) + "\n... output truncated"
-          : output,
-      isError: record.is_error === true,
-    });
-  }
-
-  return results;
-}
-
-function toolDetail(input: unknown, cwd: string): string {
-  if (typeof input !== "object" || input === null) {
-    return "";
-  }
-
-  const record = input as Record<string, unknown>;
-
-  for (const key of TOOL_DETAIL_KEYS) {
-    const value = record[key];
-    if (typeof value !== "string" || value === "") {
-      continue;
-    }
-
-    // Absolute paths inside the workspace read better as relative ones.
-    let detail = value;
-    if (detail.toLowerCase().startsWith(cwd.toLowerCase())) {
-      detail = detail.slice(cwd.length).replace(/^[\\/]+/, "");
-    }
-
-    return detail.length > MAX_TOOL_DETAIL
-      ? detail.slice(0, MAX_TOOL_DETAIL - 3) + "..."
-      : detail;
-  }
-
-  return "";
-}
 
 export class User {
   private socket: WebSocket;
@@ -217,6 +103,30 @@ export class User {
       };
     }
 
+    if (msg.type === "update-session-config") {
+      const parsed = UpdateSessionConfigSchema.safeParse(msg.payload);
+
+      if (!parsed.success) {
+        throw new Error("update-session-config: invalid payload");
+      }
+
+      const { sessionId, provider, model, effort } = parsed.data;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        throw new Error("update-session-config: unknown session");
+      }
+
+      await SessionModel.updateOne(
+        { _id: sessionId },
+        { $set: { provider, model, effort } },
+      );
+
+      return {
+        type: "session-config-updated",
+        payload: { sessionId, provider, model, effort },
+      };
+    }
+
     if (msg.type === "add-message") {
       const parsed = AddMessageSchema.safeParse(msg.payload);
 
@@ -224,7 +134,13 @@ export class User {
         throw new Error("add-message: invalid payload");
       }
 
-      const { sessionId, message } = parsed.data;
+      const {
+        sessionId,
+        message,
+        provider: requestedProvider,
+        model: requestedModel,
+        effort: requestedEffort,
+      } = parsed.data;
 
       if (!mongoose.Types.ObjectId.isValid(sessionId)) {
         throw new Error("add-message: unknown session");
@@ -269,9 +185,43 @@ export class User {
         );
       }
 
+      const targetProvider = requestedProvider || session.provider || "claude";
+      const targetModel = requestedModel || session.model || undefined;
+      const targetEffort = requestedEffort || session.effort || undefined;
+
+      // Check for mid-conversation provider switch
+      const isSwitch = Boolean(
+        session.lastProvider && session.lastProvider !== targetProvider,
+      );
+      let historyContext: string | undefined;
+
+      if (isSwitch && session.messages.length > 0) {
+        console.log(
+          `[session ${sessionId}] Provider switched from ${session.lastProvider} to ${targetProvider}. Reconstructing conversation context...`,
+        );
+        historyContext = buildHandoffTranscript(session.messages);
+      }
+
+      let resumeId: string | undefined;
+      if (!isSwitch) {
+        resumeId =
+          targetProvider === "opencode"
+            ? (session.opencodeSessionId ?? undefined)
+            : (session.anthropicSessionId ?? undefined);
+      }
+
       await SessionModel.updateOne(
         { _id: session._id },
-        { $push: { messages: stored } },
+        {
+          $push: { messages: stored },
+          $set: {
+            provider: targetProvider,
+            model: targetModel,
+            effort: targetEffort,
+            lastProvider: targetProvider,
+            lastModel: targetModel,
+          },
+        },
       );
 
       // Echo the user's own message before the run starts, so it renders
@@ -281,18 +231,104 @@ export class User {
         payload: { sessionId, message: stored },
       });
 
-      await this.runAgent(sessionId, workspace.path, message);
+      await this.runAgent({
+        sessionId,
+        workspaceId: workspace._id.toString(),
+        cwd: workspace.path,
+        prompt: message,
+        providerId: targetProvider,
+        model: targetModel,
+        effort: targetEffort,
+        resumeId,
+        historyContext,
+      });
       return null;
+    }
+
+    if (msg.type === "delete-workspace") {
+      const parsed = DeleteWorkspaceSchema.safeParse(msg.payload);
+
+      if (!parsed.success) {
+        throw new Error("delete-workspace: invalid payload");
+      }
+
+      const { workspaceId } = parsed.data;
+
+      if (!mongoose.Types.ObjectId.isValid(workspaceId)) {
+        throw new Error("delete-workspace: unknown workspace");
+      }
+
+      const workspace = await WorkspaceModel.findById(workspaceId);
+
+      if (!workspace) {
+        throw new Error("delete-workspace: unknown workspace");
+      }
+
+      // Cascade delete: remove all sessions belonging to this workspace
+      await SessionModel.deleteMany({ workspace: workspaceId });
+      await WorkspaceModel.findByIdAndDelete(workspaceId);
+
+      return {
+        type: "workspace-deleted",
+        payload: { workspaceId },
+      };
+    }
+
+    if (msg.type === "delete-session") {
+      const parsed = DeleteSessionSchema.safeParse(msg.payload);
+
+      if (!parsed.success) {
+        throw new Error("delete-session: invalid payload");
+      }
+
+      const { sessionId } = parsed.data;
+
+      if (!mongoose.Types.ObjectId.isValid(sessionId)) {
+        throw new Error("delete-session: unknown session");
+      }
+
+      // Prevent deleting a session that has an active run
+      if (activeRuns.has(sessionId)) {
+        throw new Error("delete-session: session is currently running");
+      }
+
+      const session = await SessionModel.findByIdAndDelete(sessionId);
+
+      if (!session) {
+        throw new Error("delete-session: unknown session");
+      }
+
+      return {
+        type: "session-deleted",
+        payload: { sessionId },
+      };
     }
 
     throw new Error("Incorrect input schema");
   }
 
-  private async runAgent(
-    sessionId: string,
-    cwd: string,
-    prompt: string,
-  ): Promise<void> {
+  private async runAgent(params: {
+    sessionId: string;
+    workspaceId: string;
+    cwd: string;
+    prompt: string;
+    providerId: string;
+    model?: string;
+    effort?: string;
+    resumeId?: string;
+    historyContext?: string;
+  }): Promise<void> {
+    const {
+      sessionId,
+      workspaceId,
+      cwd,
+      prompt,
+      providerId,
+      model,
+      effort,
+      resumeId,
+      historyContext,
+    } = params;
     activeRuns.add(sessionId);
     this.sendMessage({ type: "assistant-working", payload: { sessionId } });
 
@@ -323,19 +359,22 @@ export class User {
       });
     };
 
-    const resolveTool = (result: ToolResultLike): void => {
+    const resolveTool = (result: {
+      toolId: string;
+      status: "done" | "error";
+      output: string;
+    }): void => {
       const part = parts.find(
         (candidate) =>
           candidate.type === "tool" && candidate.toolId === result.toolId,
       );
 
-      // A result for a tool_use we never saw has nothing to attach to.
+      // A result for a tool_start we never saw has nothing to attach to.
       if (!part || part.type !== "tool") {
         return;
       }
 
-      const status = result.isError ? "error" : "done";
-      part.status = status;
+      part.status = result.status;
       part.output = result.output;
 
       this.sendMessage({
@@ -343,7 +382,7 @@ export class User {
         payload: {
           sessionId,
           toolId: result.toolId,
-          status,
+          status: result.status,
           output: result.output,
         },
       });
@@ -400,96 +439,58 @@ export class User {
     };
 
     try {
-      const session = await SessionModel.findById(sessionId);
-      const resume = session?.anthropicSessionId ?? undefined;
+      const provider = getProvider(providerId);
 
-      for await (const message of query({
+      for await (const event of provider.runAgent({
         prompt,
-        options: {
-          cwd,
-          allowedTools: ["Read", "Edit", "Glob"],
-          resume,
-          permissionMode: "acceptEdits",
-          // Emits `stream_event` frames carrying raw Messages API deltas, which
-          // is what makes the prose appear as it is written.
-          includePartialMessages: true,
-        },
+        cwd,
+        workspaceId,
+        sessionId,
+        resumeId,
+        model,
+        effort,
+        historyContext,
       })) {
-        // Prose arrives here, token by token.
-        if (message.type === "stream_event") {
-          const { event } = message;
-          if (
-            event.type === "content_block_delta" &&
-            event.delta.type === "text_delta"
-          ) {
-            pushText(event.delta.text);
-          }
-          continue;
-        }
+        switch (event.type) {
+          case "text_delta":
+            pushText(event.text);
+            break;
 
-        // Completed blocks arrive here. Text is skipped because the deltas
-        // above already carried it; only tool calls are new information.
-        if (message.type === "assistant") {
-          for (const block of message.message.content) {
-            if (block.type === "tool_use") {
-              pushTool(block.id, block.name, toolDetail(block.input, cwd));
+          case "tool_start":
+            pushTool(event.toolId, event.name, event.detail);
+            break;
+
+          case "tool_result":
+            resolveTool(event);
+            break;
+
+          case "thinking_tokens":
+            this.sendMessage({
+              type: "assistant-progress",
+              payload: { sessionId, thinkingTokens: event.tokens },
+            });
+            break;
+
+          case "success":
+            if (event.sessionId) {
+              if (providerId === "opencode") {
+                await SessionModel.updateOne(
+                  { _id: sessionId },
+                  { $set: { opencodeSessionId: event.sessionId } },
+                );
+              } else {
+                await SessionModel.updateOne(
+                  { _id: sessionId },
+                  { $set: { anthropicSessionId: event.sessionId } },
+                );
+              }
             }
-          }
-          continue;
-        }
+            await settle(event.text, false);
+            break;
 
-        // The CLI emits user-role messages for content it adds itself, which is
-        // chiefly the tool_result blocks answering the tool_use blocks above.
-        if (message.type === "user") {
-          for (const result of extractToolResults(message.message.content)) {
-            resolveTool(result);
-          }
-          continue;
-        }
-
-        // Live thinking-token estimate. The SDK documents this as intended for
-        // exactly this kind of progress indicator.
-        if (
-          message.type === "system" &&
-          message.subtype === "thinking_tokens"
-        ) {
-          this.sendMessage({
-            type: "assistant-progress",
-            payload: { sessionId, thinkingTokens: message.estimated_tokens },
-          });
-          continue;
-        }
-
-        if (message.type !== "result") {
-          continue;
-        }
-
-        // `field: null` matches both an explicit null and an absent field, so
-        // the first result to arrive claims the id and later ones no-op.
-        await SessionModel.updateOne(
-          { _id: sessionId, anthropicSessionId: null },
-          { $set: { anthropicSessionId: message.session_id } },
-        );
-
-        if (message.subtype === "success") {
-          const text = message.result.trim();
-
-          if (message.is_error) {
-            await settle(text || "The agent stopped on an error.", true);
-          } else if (text === "") {
-            // An empty string would render a blank bubble and fail the
-            // schema's `required` on payload.message, losing the row.
-            await settle("The agent finished without producing a reply.", true);
-          } else {
-            await settle(message.result, false);
-          }
-        } else {
-          await settle(
-            message.errors.length > 0
-              ? message.errors.join("\n")
-              : RESULT_ERROR_LABEL[message.subtype],
-            true,
-          );
+          case "error":
+            await settle(event.message, true);
+            break;
         }
       }
     } catch (error) {
