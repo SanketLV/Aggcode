@@ -1,4 +1,8 @@
-import type { MessagePart, OutgoingMessageType } from "commons/types";
+import type {
+  MessagePart,
+  OutgoingMessageType,
+  ProviderOption,
+} from "commons/types";
 import {
   createContext,
   type Dispatch,
@@ -9,7 +13,7 @@ import {
   useState,
 } from "react";
 import { useSocket, type SocketStatus } from "../hooks/useSocket";
-import { appendDelta, appendMessage } from "../lib/helpers";
+import { appendDelta, appendMessage, send } from "../lib/helpers";
 
 export type UiWorkspace = {
   id: string;
@@ -17,6 +21,9 @@ export type UiWorkspace = {
   path: string;
   sessions: {
     id: string;
+    provider?: string;
+    model?: string;
+    effort?: string;
     messages: {
       role: "user" | "assistant";
       payload: { message: string; parts?: MessagePart[] };
@@ -40,6 +47,11 @@ type AppContextValue = {
   liveTurns: Record<string, MessagePart[]>;
   runStartedAt: Record<string, number>;
   thinkingTokens: Record<string, number>;
+  providers: ProviderOption[];
+  updateSessionConfig: (
+    sessionId: string,
+    config: { provider: string; model?: string; effort?: string },
+  ) => void;
 };
 
 const AppContext = createContext<AppContextValue | null>(null);
@@ -58,6 +70,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [thinkingTokens, setThinkingTokens] = useState<Record<string, number>>(
     {},
   );
+  const [providers, setProviders] = useState<ProviderOption[]>([]);
 
   useEffect(() => {
     if (status !== "open") {
@@ -75,6 +88,21 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
       if (data.type === "init") {
         setWorkspaces(data.workspaces as UiWorkspace[]);
+        if (data.providers) {
+          setProviders(data.providers);
+        }
+      }
+
+      if (data.type === "session-config-updated") {
+        const { sessionId, provider, model, effort } = data.payload;
+        setWorkspaces((current) =>
+          current.map((w) => ({
+            ...w,
+            sessions: w.sessions.map((s) =>
+              s.id === sessionId ? { ...s, provider, model, effort } : s,
+            ),
+          })),
+        );
       }
 
       if (data.type === "workspace-created") {
@@ -103,6 +131,35 @@ export function AppProvider({ children }: { children: ReactNode }) {
         );
         setOpenWorkspaceId(workspaceId);
         setActiveSessionId(id);
+      }
+
+      if (data.type === "workspace-deleted") {
+        const { workspaceId } = data.payload;
+        setWorkspaces((current) => current.filter((w) => w.id !== workspaceId));
+        if (openWorkspaceId === workspaceId) {
+          setOpenWorkspaceId(null);
+        }
+        // Clear active session if it belonged to the deleted workspace
+        setWorkspaces((current) => {
+          const deletedWorkspace = workspaces.find((w) => w.id === workspaceId);
+          if (deletedWorkspace?.sessions.some((s) => s.id === activeSessionId)) {
+            setActiveSessionId(null);
+          }
+          return current;
+        });
+      }
+
+      if (data.type === "session-deleted") {
+        const { sessionId } = data.payload;
+        setWorkspaces((current) =>
+          current.map((w) => ({
+            ...w,
+            sessions: w.sessions.filter((s) => s.id !== sessionId),
+          })),
+        );
+        if (activeSessionId === sessionId) {
+          setActiveSessionId(null);
+        }
       }
 
       if (data.type === "message-added") {
@@ -184,6 +241,29 @@ export function AppProvider({ children }: { children: ReactNode }) {
     };
   }, [socket]);
 
+  const updateSessionConfig = (
+    sessionId: string,
+    config: { provider: string; model?: string; effort?: string },
+  ) => {
+    setWorkspaces((current) =>
+      current.map((w) => ({
+        ...w,
+        sessions: w.sessions.map((s) =>
+          s.id === sessionId ? { ...s, ...config } : s,
+        ),
+      })),
+    );
+    send(socket, {
+      type: "update-session-config",
+      payload: {
+        sessionId,
+        provider: config.provider,
+        model: config.model,
+        effort: config.effort as any,
+      },
+    });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -201,6 +281,8 @@ export function AppProvider({ children }: { children: ReactNode }) {
         liveTurns,
         runStartedAt,
         thinkingTokens,
+        providers,
+        updateSessionConfig,
       }}
     >
       {children}

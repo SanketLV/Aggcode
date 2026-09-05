@@ -66,6 +66,18 @@ export const SessionRefSchema = z.object({
 
 export type SessionRefSchemaType = z.infer<typeof SessionRefSchema>;
 
+export const WorkspaceDeletedSchema = z.object({
+  workspaceId: z.string(),
+});
+
+export type WorkspaceDeletedSchemaType = z.infer<typeof WorkspaceDeletedSchema>;
+
+export const SessionDeletedSchema = z.object({
+  sessionId: z.string(),
+});
+
+export type SessionDeletedSchemaType = z.infer<typeof SessionDeletedSchema>;
+
 export const AssistantErrorSchema = z.object({
   sessionId: z.string(),
   message: z.string(),
@@ -116,6 +128,20 @@ export type AssistantProgressSchemaType = z.infer<
   typeof AssistantProgressSchema
 >;
 
+export type ModelOption = {
+  id: string;
+  name: string;
+  supportsEffort?: boolean;
+};
+
+export type ProviderOption = {
+  id: string;
+  name: string;
+  models: ModelOption[];
+  defaultModel: string;
+  effortLevels?: string[];
+};
+
 // One incoming `add-message` produces several outgoing messages over time:
 // `message-added` (the user's echo), then `assistant-working`, then any number
 // of `assistant-delta` / `assistant-tool` frames as the run progresses, then
@@ -137,6 +163,16 @@ export type OutgoingMessageType =
   | {
       type: "init";
       workspaces: Workspace[];
+      providers?: ProviderOption[];
+    }
+  | {
+      type: "session-config-updated";
+      payload: {
+        sessionId: string;
+        provider: string;
+        model?: string;
+        effort?: string;
+      };
     }
   | {
       type: "assistant-message";
@@ -165,11 +201,22 @@ export type OutgoingMessageType =
   | {
       type: "assistant-progress";
       payload: AssistantProgressSchemaType;
+    }
+  | {
+      type: "workspace-deleted";
+      payload: WorkspaceDeletedSchemaType;
+    }
+  | {
+      type: "session-deleted";
+      payload: SessionDeletedSchemaType;
     };
 
 export type Session = {
   id: string;
   messages: Message[];
+  provider?: string;
+  model?: string;
+  effort?: string;
 };
 
 export type Workspace = {

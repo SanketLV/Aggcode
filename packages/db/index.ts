@@ -40,7 +40,13 @@ export const Workspace = new Schema({
 export const Session = new Schema({
   workspace: { type: Schema.Types.ObjectId, ref: "Workspace", required: true },
   messages: { type: [Message], default: [] },
+  provider: { type: String, default: "claude" },
+  model: String,
+  effort: String,
+  lastProvider: String,
+  lastModel: String,
   anthropicSessionId: String,
+  opencodeSessionId: String,
 });
 
 export const WorkspaceModel = mongoose.model("Workspace", Workspace);

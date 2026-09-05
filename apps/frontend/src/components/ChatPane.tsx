@@ -6,6 +6,13 @@ import { send, partsOf } from "../lib/helpers";
 import type { ToolPart } from "../types";
 import { AssistantTurn } from "./AssistantTurn";
 import { RunIndicator } from "./RunIndicator";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
 
 export function ChatPane() {
   const {
@@ -18,6 +25,8 @@ export function ChatPane() {
     liveTurns,
     runStartedAt,
     thinkingTokens,
+    providers,
+    updateSessionConfig,
   } = useApp();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -75,6 +84,51 @@ export function ChatPane() {
     );
   }
 
+  const currentProvider = active?.session.provider || "claude";
+  const providerInfo = providers.find((p) => p.id === currentProvider);
+  const availableModels = providerInfo?.models || [];
+  const currentModel =
+    active?.session.model ||
+    providerInfo?.defaultModel ||
+    availableModels[0]?.id ||
+    "";
+  const currentEffort = active?.session.effort || "high";
+
+  const selectedModelInfo = availableModels.find((m) => m.id === currentModel);
+  const supportsEffort =
+    selectedModelInfo?.supportsEffort ??
+    (currentProvider === "claude" && currentModel.includes("sonnet-3-7"));
+
+  const handleProviderChange = (newProvider: string) => {
+    if (!active) return;
+    const targetProv = providers.find((p) => p.id === newProvider);
+    const newModel =
+      targetProv?.defaultModel || targetProv?.models[0]?.id || "";
+    updateSessionConfig(active.session.id, {
+      provider: newProvider,
+      model: newModel,
+      effort: currentEffort,
+    });
+  };
+
+  const handleModelChange = (newModel: string) => {
+    if (!active) return;
+    updateSessionConfig(active.session.id, {
+      provider: currentProvider,
+      model: newModel,
+      effort: currentEffort,
+    });
+  };
+
+  const handleEffortChange = (newEffort: string) => {
+    if (!active) return;
+    updateSessionConfig(active.session.id, {
+      provider: currentProvider,
+      model: currentModel,
+      effort: newEffort,
+    });
+  };
+
   const submit = () => {
     const trimmed = draft.trim();
     if (trimmed === "" || !online || isWorking) {
@@ -83,7 +137,13 @@ export function ChatPane() {
 
     const sent = send(socket, {
       type: "add-message",
-      payload: { sessionId: active.session.id, message: trimmed },
+      payload: {
+        sessionId: active.session.id,
+        message: trimmed,
+        provider: currentProvider,
+        model: currentModel || undefined,
+        effort: supportsEffort ? (currentEffort as any) : undefined,
+      },
     });
 
     if (sent) {
@@ -167,6 +227,85 @@ export function ChatPane() {
           submit();
         }}
       >
+        {providers.length > 0 && (
+          <div className="mx-auto mb-2 flex max-w-4xl flex-wrap items-center gap-2">
+            {/* Provider */}
+            <Select
+              value={currentProvider}
+              onValueChange={handleProviderChange}
+              disabled={isWorking || !online}
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-7 text-xs bg-muted/40 hover:bg-muted/70 border-border"
+              >
+                <span className="text-muted-foreground mr-1">Provider:</span>
+                <SelectValue placeholder="Provider" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((p) => (
+                  <SelectItem key={p.id} value={p.id} className="text-xs">
+                    {p.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Model */}
+            <Select
+              value={currentModel}
+              onValueChange={handleModelChange}
+              disabled={isWorking || !online || availableModels.length === 0}
+            >
+              <SelectTrigger
+                size="sm"
+                className="h-7 max-w-[280px] text-xs bg-muted/40 hover:bg-muted/70 border-border truncate"
+              >
+                <span className="text-muted-foreground mr-1">Model:</span>
+                <SelectValue placeholder="Model" />
+              </SelectTrigger>
+              <SelectContent>
+                {availableModels.map((m) => (
+                  <SelectItem key={m.id} value={m.id} className="text-xs">
+                    {m.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Effort */}
+            {supportsEffort && (
+              <Select
+                value={currentEffort}
+                onValueChange={handleEffortChange}
+                disabled={isWorking || !online}
+              >
+                <SelectTrigger
+                  size="sm"
+                  className="h-7 text-xs bg-muted/40 hover:bg-muted/70 border-border"
+                >
+                  <span className="text-muted-foreground mr-1">Effort:</span>
+                  <SelectValue placeholder="Effort" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low" className="text-xs">
+                    Low
+                  </SelectItem>
+                  <SelectItem value="medium" className="text-xs">
+                    Medium
+                  </SelectItem>
+                  <SelectItem value="high" className="text-xs">
+                    High
+                  </SelectItem>
+                  <SelectItem value="max" className="text-xs">
+                    Max
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+        )}
+
         <div className="mx-auto flex max-w-4xl items-end gap-2">
           <label htmlFor="composer" className="sr-only">
             Message
