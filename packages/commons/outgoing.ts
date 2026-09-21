@@ -142,6 +142,40 @@ export type ProviderOption = {
   effortLevels?: string[];
 };
 
+export type AuthField = {
+  id: string;
+  label: string;
+  type: "text" | "password";
+  placeholder?: string;
+  required?: boolean;
+  description?: string;
+};
+
+export type AuthMethodDescriptor = {
+  id: string;
+  label: string;
+  type: "oauth" | "api_key" | "none";
+  fields?: AuthField[];
+  description?: string;
+};
+
+export type ProviderAuthStatus = {
+  providerId: string;
+  isAuthenticated: boolean;
+  method?: string;
+  accountName?: string;
+  details?: string;
+  connectedSubProviders?: string[];
+  extra?: Record<string, unknown>;
+};
+
+export type ProviderDescriptor = {
+  id: string;
+  name: string;
+  authMethods: AuthMethodDescriptor[];
+  status: ProviderAuthStatus;
+};
+
 // One incoming `add-message` produces several outgoing messages over time:
 // `message-added` (the user's echo), then `assistant-working`, then any number
 // of `assistant-delta` / `assistant-tool` frames as the run progresses, then
@@ -164,6 +198,8 @@ export type OutgoingMessageType =
       type: "init";
       workspaces: Workspace[];
       providers?: ProviderOption[];
+      providerAuth?: Record<string, ProviderAuthStatus>;
+      providerDescriptors?: ProviderDescriptor[];
     }
   | {
       type: "session-config-updated";
@@ -172,6 +208,28 @@ export type OutgoingMessageType =
         provider: string;
         model?: string;
         effort?: string;
+      };
+    }
+  | {
+      type: "provider-auth-updated";
+      payload: {
+        statuses: Record<string, ProviderAuthStatus>;
+        descriptors?: ProviderDescriptor[];
+      };
+    }
+  | {
+      type: "provider-auth-result";
+      payload: {
+        providerId: string;
+        action: "login" | "logout";
+        success: boolean;
+        message?: string;
+      };
+    }
+  | {
+      type: "provider-catalog-updated";
+      payload: {
+        providers: ProviderOption[];
       };
     }
   | {

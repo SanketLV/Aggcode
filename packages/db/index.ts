@@ -51,3 +51,15 @@ export const Session = new Schema({
 
 export const WorkspaceModel = mongoose.model("Workspace", Workspace);
 export const SessionModel = mongoose.model("Session", Session);
+
+export const ProviderConfig = new Schema({
+  providerId: { type: String, required: true, unique: true },
+  credentials: { type: Map, of: String, default: {} },
+  authMethod: String,
+  updatedAt: { type: Date, default: Date.now },
+});
+
+export const ProviderConfigModel = mongoose.model(
+  "ProviderConfig",
+  ProviderConfig,
+);

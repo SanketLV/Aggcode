@@ -4,6 +4,9 @@ import {
   CreateWorkspaceSchema,
   DeleteSessionSchema,
   DeleteWorkspaceSchema,
+  GetProviderAuthSchema,
+  ProviderLoginSchema,
+  ProviderLogoutSchema,
   UpdateSessionConfigSchema,
   type IncomingMessageType,
   type Message,
@@ -13,7 +16,15 @@ import {
 import { SessionModel, WorkspaceModel } from "db/client";
 import mongoose from "mongoose";
 import { WebSocket } from "ws";
-import { getProvider } from "./providers";
+import {
+  CLAUDE_CATALOG,
+  findProvider,
+  getAuthSnapshot,
+  getProvider,
+  getProviderCatalog,
+  resolveModel,
+} from "./providers";
+import { chatGateRejection } from "./providers/authScope";
 import { buildHandoffTranscript } from "./providers/workspaceContext";
 
 // Workspace paths arrive in whatever form the OS uses, so split on both separators.
@@ -186,8 +197,21 @@ export class User {
       }
 
       const targetProvider = requestedProvider || session.provider || "claude";
-      const targetModel = requestedModel || session.model || undefined;
+      const rawModel = requestedModel || session.model || undefined;
+      const targetModel =
+        targetProvider === "claude"
+          ? resolveModel(CLAUDE_CATALOG, rawModel)
+          : rawModel;
       const targetEffort = requestedEffort || session.effort || undefined;
+
+      // Chat needs a signed-in provider, even for OpenCode's free models
+      // (product requirement).
+      const gateRejection = await chatGateRejection(
+        getProvider(targetProvider),
+      );
+      if (gateRejection) {
+        return reject(gateRejection);
+      }
 
       // Check for mid-conversation provider switch
       const isSwitch = Boolean(
@@ -301,6 +325,128 @@ export class User {
       return {
         type: "session-deleted",
         payload: { sessionId },
+      };
+    }
+
+    if (msg.type === "get-provider-auth") {
+      const parsed = GetProviderAuthSchema.safeParse(msg.payload);
+      if (!parsed.success) {
+        throw new Error("get-provider-auth: invalid payload");
+      }
+      const { statuses, descriptors } = await getAuthSnapshot();
+      return {
+        type: "provider-auth-updated",
+        payload: { statuses, descriptors },
+      };
+    }
+
+    if (msg.type === "provider-login") {
+      const parsed = ProviderLoginSchema.safeParse(msg.payload);
+      if (!parsed.success) {
+        throw new Error("provider-login: invalid payload");
+      }
+      const { providerId, method, credentials } = parsed.data;
+      const provider = findProvider(providerId);
+      if (!provider?.auth) {
+        return {
+          type: "provider-auth-result",
+          payload: {
+            providerId,
+            action: "login",
+            success: false,
+            message: provider
+              ? `Provider '${providerId}' does not support authentication.`
+              : `Unknown provider '${providerId}'.`,
+          },
+        };
+      }
+
+      // A thrown error would leave the modal spinner running, since UserManager
+      // only logs it; report it as a failed result instead.
+      const result = await provider.auth
+        .login({ method, credentials })
+        .catch((err: unknown) => {
+          console.error(`[${providerId} auth] ${msg.type} failed:`, err);
+          return {
+            success: false,
+            message: err instanceof Error ? err.message : String(err),
+          };
+        });
+      this.sendMessage({
+        type: "provider-auth-result",
+        payload: {
+          providerId,
+          action: "login",
+          success: result.success,
+          message: result.message,
+        },
+      });
+
+      const { statuses, descriptors } = await getAuthSnapshot();
+      this.sendMessage({
+        type: "provider-auth-updated",
+        payload: { statuses, descriptors },
+      });
+
+      const updatedCatalog = await getProviderCatalog();
+      return {
+        type: "provider-catalog-updated",
+        payload: { providers: updatedCatalog },
+      };
+    }
+
+    if (msg.type === "provider-logout") {
+      const parsed = ProviderLogoutSchema.safeParse(msg.payload);
+      if (!parsed.success) {
+        throw new Error("provider-logout: invalid payload");
+      }
+      const { providerId, target } = parsed.data;
+      const provider = findProvider(providerId);
+      if (!provider?.auth) {
+        return {
+          type: "provider-auth-result",
+          payload: {
+            providerId,
+            action: "logout",
+            success: false,
+            message: provider
+              ? `Provider '${providerId}' does not support authentication.`
+              : `Unknown provider '${providerId}'.`,
+          },
+        };
+      }
+
+      // A thrown error would leave the modal spinner running, since UserManager
+      // only logs it; report it as a failed result instead.
+      const result = await provider.auth
+        .logout({ target })
+        .catch((err: unknown) => {
+          console.error(`[${providerId} auth] ${msg.type} failed:`, err);
+          return {
+            success: false,
+            message: err instanceof Error ? err.message : String(err),
+          };
+        });
+      this.sendMessage({
+        type: "provider-auth-result",
+        payload: {
+          providerId,
+          action: "logout",
+          success: result.success,
+          message: result.message,
+        },
+      });
+
+      const { statuses, descriptors } = await getAuthSnapshot();
+      this.sendMessage({
+        type: "provider-auth-updated",
+        payload: { statuses, descriptors },
+      });
+
+      const updatedCatalog = await getProviderCatalog();
+      return {
+        type: "provider-catalog-updated",
+        payload: { providers: updatedCatalog },
       };
     }
 

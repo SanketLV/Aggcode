@@ -39,7 +39,7 @@ A restart drops every open socket, and `useSocket` has no reconnect — so after
 
 The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string>` (see `.env.example`). `mongoose.connect` is the outer promise in `index.ts` — if it rejects, the WebSocket server is never created and the only output is a logged error.
 
-Tests use `bun test` (no extra dependency). Only `packages/commons` has tests so far (`incoming.test.ts`, the zod wire schemas). A package joins `bun run test` by adding `"test": "bun test"` to its `package.json`; the turbo `test` task picks it up. The backend and frontend have none yet: `User.ts` needs Mongo, so testing it means either a test database or pulling the handlers away from the models first.
+Tests use `bun test` (no extra dependency). A package joins `bun run test` by adding `"test": "bun test"` to its `package.json`; the turbo `test` task picks it up. All three packages that have logic are in: `packages/commons` (the zod wire schemas), `apps/backend` (`providers/*.test.ts`) and `apps/frontend` (`src/lib/*.test.ts`). `User.ts` itself is still untested because it needs Mongo, so logic worth testing is pulled out into pure functions first (`providers/authScope.ts`, `lib/composer.ts`) and the handler just calls them. `providers/index.test.ts` mocks `child_process` with `mock.module`; spread the real module into the mock or unrelated imports that need `execFile` fail to load.
 
 ## Workflow
 
@@ -47,7 +47,7 @@ One main system, plus three project skills in `.claude/skills/` (`before-and-aft
 
 1. **Spec** — `/spartan:spec`. Write the acceptance criteria as numbered lines (`AC-1`, `AC-2`, …). The same numbers carry through: each AC gets a test in step 2, a check in step 4, and a line in the PR body.
 2. **Build, test first** — `bun test` next to the code (`foo.ts` → `foo.test.ts`). If a wire message changes, a schema test in `packages/commons` comes first, because the four-place rule under "The wire protocol" is where changes break.
-3. **Prove UI changes** — `before-and-after`. Capture the "before" image *before* you edit, since both apps use hardcoded ports (`:3000`, `:3001`) and cannot run twice side by side. Then pass the two image paths. **Do not use the default upload**: it posts to 0x0.st, which is public. Keep the images local or use `IMAGE_ADAPTER=gist`.
+3. **Prove UI changes** — `before-and-after`. Capture the "before" image _before_ you edit, since both apps use hardcoded ports (`:3000`, `:3001`) and cannot run twice side by side. Then pass the two image paths. **Do not use the default upload**: it posts to 0x0.st, which is public. Keep the images local or use `IMAGE_ADAPTER=gist`.
 4. **Check** — `bun run test`, `bun run build`, then `/code-review`. Go through the ACs one by one against the running app, not the diff.
 5. **Ship** — run `unslop` over the commit message and PR body, then `/spartan:pr-ready`. Feature branches come off `dev`; `main` is production.
 6. **Sync** — `/sync` after merge. It only maintains `AGENTS.md` (it treats `CLAUDE.md` as a pointer and never writes into it), so bring this file up to date by hand in the same change. Most of the durable rules live here.
@@ -65,8 +65,8 @@ apps/frontend (Bun.serve :3001)  ──WebSocket──▶  apps/backend (ws :300
 
 `packages/commons` is the single source of truth for every message crossing the socket:
 
-- `incoming.ts` — zod schemas + `IncomingMessageType`, a discriminated union on `type`: `create-workspace`, `create-session`, `add-message`.
-- `outgoing.ts` — `OutgoingMessageType`: `workspace-created`, `session-created`, `message-added`, `init`. Also the domain types `Workspace`, `Session`, `Message` shared by both sides.
+- `incoming.ts` — zod schemas + `IncomingMessageType`, a discriminated union on `type`: `create-workspace`, `create-session`, `add-message`, `update-session-config`, `delete-workspace`, `delete-session`, `provider-login`, `provider-logout`, `get-provider-auth`.
+- `outgoing.ts` — `OutgoingMessageType`: `workspace-created`, `session-created`, `message-added`, `init`, `session-config-updated`, the `assistant-*` run frames, `workspace-deleted`, `session-deleted`, and the provider-auth frames `provider-auth-updated`, `provider-auth-result`, `provider-catalog-updated`. Also the domain types `Workspace`, `Session`, `Message` and the auth types `ProviderAuthStatus` / `ProviderDescriptor` shared by both sides.
 
 Adding or changing a message means touching **four** places: the schema/union in `commons`, the `if (msg.type === ...)` chain in `apps/backend/User.ts`, the `socket.onmessage` handler in `apps/frontend/src/App.tsx`, and the mongoose schema in `packages/db/index.ts` if it persists.
 
@@ -153,12 +153,24 @@ Two client-side conventions to keep:
 - **Workspace creation is optimistic**, everything else is server-confirmed. A submitted workspace is held in local state as `{...w, pending: true}` with a `pending:<uuid>` placeholder id, then swapped for the real record when `workspace-created` arrives (matched on `path`). Sessions and messages are only appended on the server's reply, so what is on screen is what is in Mongo.
 - **`useSocket` returns the socket synchronously, before the handshake resolves**, so `App` can attach `onmessage` in time for the `init` snapshot the server pushes on connect. Use the returned `status` (`connecting` / `open` / `closed`), not the socket's existence, to gate sends.
 
+## Provider sign-in (apps/backend/providers)
+
+Each provider may carry an `auth` plugin (`AuthProviderPlugin` in `types.ts`): its sign-in methods, a status check, `login` and `logout`. The modal in `ProviderAuthModal.tsx` renders whatever the descriptors list, so an advertised method must actually work end to end. A `free_tier` method that `login` rejected once shipped this way.
+
+- **Sign-out never touches machine-wide logins.** The `claude` CLI login and OpenCode's `auth.json` are shared with every other tool on the machine. Claude sign-out only deletes the API key Aggcode stored and tells the user how to end the CLI login themselves. OpenCode sign-out only removes sub-providers Aggcode connected (recorded in `ProviderConfigModel` under `providerId: "opencode"`), through the SDK v2 `auth.remove`, never by editing `auth.json`. The first version ran `claude auth logout` and emptied `auth.json`.
+- **Auth actions use `findProvider`, not `getProvider`.** `getProvider` falls back to Claude for routing chat, so a login or logout with a mistyped id would silently act on Claude.
+- **The chat gate fails closed** (`chatGateRejection`): if the status check throws, the run does not start.
+- **Status comes from one snapshot.** `getAuthSnapshot` checks every provider once, in parallel, for both the status map and the descriptors. The Claude CLI check (`claude auth status`, about 2s, much slower while OpenCode's server starts) shares one in-flight call, has a 15s timeout, and caches only signed-in results for 30s, so finishing a browser login shows up on the next check. A 4s timeout used to report a signed-in user as signed out right after backend start.
+- **Stored API keys are encrypted** with AES-256-GCM (`credentialCipher.ts`, values prefixed `enc:v1:`). The key is `AGGCODE_CREDENTIALS_KEY` (32 bytes, base64) or `~/.aggcode/credentials.key`, created on first use. Values without the prefix are legacy plaintext and still read. Losing the key only means re-entering the API key.
+- **Claude model ids are verified, not guessed.** `CLAUDE_CATALOG` in `providers/index.ts` lists ids confirmed with a real SDK run; `claude-3-7-sonnet` and `claude-3-5-*` were rejected as unknown models. `resolveModel` swaps an off-catalog id saved on an old session for the default, and `ChatPane` shows the default for it too.
+- **A login or logout that throws is reported** as a failed `provider-auth-result`, and the client times the request out after 30s, so the modal spinner cannot hang.
+
 ## UI conventions (apps/frontend/src/App.tsx)
 
 Everything lives in `App.tsx` (`App` / `ConnectingShell` / `Sidebar` / `ChatPane`) by deliberate choice. Keep it that way until the file genuinely needs splitting.
 
 - **Dark mode is locked**, not toggled: `class="dark"` sits on `<html>` in `src/index.html` alongside `<meta name="color-scheme" content="dark">`. There is no light palette in use and no theme switcher.
-- **Only semantic tokens.** Use `bg-background`, `bg-card`, `bg-muted`, `bg-primary`/`text-primary-foreground`, `bg-accent`/`text-accent-foreground`, `text-muted-foreground`, `border-border`, `border-input`, `ring-ring`. Never raw palette classes like `bg-zinc-900`, or the page drifts off the shadcn token set in `styles/globals.css`.
+- **Only semantic tokens.** Use `bg-background`, `bg-card`, `bg-muted`, `bg-primary`/`text-primary-foreground`, `bg-accent`/`text-accent-foreground`, `text-muted-foreground`, `border-border`, `border-input`, `ring-ring`, and for status `success` / `warning` (`bg-success/10 text-success`, defined in `globals.css` for both themes). Never raw palette classes like `bg-zinc-900`, or the page drifts off the shadcn token set in `styles/globals.css`.
 - **Shape rule:** interactive controls are `rounded-md`, panels and message bubbles are `rounded-lg`.
 - **Icons:** lucide-react only, `strokeWidth={1.5}` via the `ICON_STROKE` constant.
 - **Motion:** colour transitions and one chevron rotation, all with a `motion-reduce:transition-none` companion. No animation library.
