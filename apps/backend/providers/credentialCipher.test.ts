@@ -12,13 +12,13 @@ const key = Buffer.alloc(32, 7);
 
 describe("credential encryption", () => {
   test("round-trips a secret", () => {
-    const stored = encryptSecret("sk-ant-api03-secret", key);
-    expect(decryptSecret(stored, key)).toBe("sk-ant-api03-secret");
+    const stored = encryptSecret("fixture-plaintext-value", key);
+    expect(decryptSecret(stored, key)).toBe("fixture-plaintext-value");
   });
 
   test("the stored value never contains the plaintext", () => {
-    const stored = encryptSecret("sk-ant-api03-secret", key);
-    expect(stored).not.toContain("sk-ant");
+    const stored = encryptSecret("fixture-plaintext-value", key);
+    expect(stored).not.toContain("fixture-plaintext");
     expect(stored.startsWith("enc:v1:")).toBe(true);
   });
 
