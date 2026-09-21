@@ -22,6 +22,7 @@ bun run dev                 # turbo run dev  -> backend (:3000) + frontend (:300
 bun run build               # turbo run build
 bun run lint                # turbo run lint (currently a no-op for both apps)
 bun run check-types         # turbo run check-types (currently a no-op for both apps)
+bun run test                # turbo run test -> bun test in every package with a test script
 bun run format              # prettier --write "**/*.{ts,tsx,md}"
 ```
 
@@ -38,7 +39,18 @@ A restart drops every open socket, and `useSocket` has no reconnect — so after
 
 The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string>` (see `.env.example`). `mongoose.connect` is the outer promise in `index.ts` — if it rejects, the WebSocket server is never created and the only output is a logged error.
 
-There is **no test setup** in this repo (no test runner, no test files, no `test` task in `turbo.json`). If tests are wanted, `bun test` is the natural fit for a Bun repo.
+Tests use `bun test` (no extra dependency). Only `packages/commons` has tests so far (`incoming.test.ts`, the zod wire schemas). A package joins `bun run test` by adding `"test": "bun test"` to its `package.json`; the turbo `test` task picks it up. The backend and frontend have none yet: `User.ts` needs Mongo, so testing it means either a test database or pulling the handlers away from the models first.
+
+## Workflow
+
+One main system, plus three project skills in `.claude/skills/` (`before-and-after`, `unslop`, `sync`, pinned in `skills-lock.json`). For anything under ~30 minutes that touches ≤ 3 files, skip to step 2.
+
+1. **Spec** — `/spartan:spec`. Write the acceptance criteria as numbered lines (`AC-1`, `AC-2`, …). The same numbers carry through: each AC gets a test in step 2, a check in step 4, and a line in the PR body.
+2. **Build, test first** — `bun test` next to the code (`foo.ts` → `foo.test.ts`). If a wire message changes, a schema test in `packages/commons` comes first, because the four-place rule under "The wire protocol" is where changes break.
+3. **Prove UI changes** — `before-and-after`. Capture the "before" image *before* you edit, since both apps use hardcoded ports (`:3000`, `:3001`) and cannot run twice side by side. Then pass the two image paths. **Do not use the default upload**: it posts to 0x0.st, which is public. Keep the images local or use `IMAGE_ADAPTER=gist`.
+4. **Check** — `bun run test`, `bun run build`, then `/code-review`. Go through the ACs one by one against the running app, not the diff.
+5. **Ship** — run `unslop` over the commit message and PR body, then `/spartan:pr-ready`. Feature branches come off `dev`; `main` is production.
+6. **Sync** — `/sync` after merge. It only maintains `AGENTS.md` (it treats `CLAUDE.md` as a pointer and never writes into it), so bring this file up to date by hand in the same change. Most of the durable rules live here.
 
 ## Architecture
 

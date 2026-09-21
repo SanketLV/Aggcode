@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "before-and-after": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "before-and-after/SKILL.md",
+      "computedHash": "7573592b3d69e934133ca23a73d0db8dde65ff3a9323ea694c20527fb1cdffa3"
+    },
     "cavecrew": {
       "source": "JuliusBrussee/caveman",
       "sourceType": "github",
@@ -114,6 +120,18 @@
       "sourceType": "github",
       "skillPath": "skills/surgical-patch/SKILL.md",
       "computedHash": "028b9c3574142d19639d9f8eb11fbb01c58479f8f441e957d598a7215e79f95d"
+    },
+    "sync": {
+      "source": "JavaScript-Mastery-Pro/skills",
+      "sourceType": "github",
+      "skillPath": "skills/sync/SKILL.md",
+      "computedHash": "5986c38a23bbb14f82c018862ff0a601f3f20b4a8a1f429e9731b4da6742a765"
+    },
+    "unslop": {
+      "source": "michaelshimeles/skills",
+      "sourceType": "github",
+      "skillPath": "unslop/SKILL.md",
+      "computedHash": "37e739f6d7f5e23d640544f5db279cd36a238a2205272342ef7a617d6216c956"
     },
     "verify-and-stop": {
       "source": "JuliusBrussee/caveman",
