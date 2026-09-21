@@ -63,7 +63,8 @@ export async function buildWorkspaceSessionSummary(
     const items = otherSessions.map((s) => {
       const msgs = s.messages || [];
       const firstUserMsg =
-        msgs.find((m) => m.role === "user")?.payload?.message ?? "Empty session";
+        msgs.find((m) => m.role === "user")?.payload?.message ??
+        "Empty session";
       const lastMsg = msgs.length > 0 ? msgs[msgs.length - 1] : null;
       const lastSummary = lastMsg?.payload?.message
         ? lastMsg.payload.message.length > 120
@@ -137,7 +138,12 @@ export function createWorkspaceMcpServer(
             currentSessionId,
           );
           return {
-            content: [{ type: "text", text: summary || "No other sessions in this workspace." }],
+            content: [
+              {
+                type: "text",
+                text: summary || "No other sessions in this workspace.",
+              },
+            ],
           };
         },
       ),

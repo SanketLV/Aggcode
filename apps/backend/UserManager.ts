@@ -3,7 +3,7 @@ import { User } from "./User";
 import { uuid } from "uuidv4";
 import { SessionModel, WorkspaceModel } from "db/client";
 import type { MessagePart, Workspace } from "commons/types";
-import { getProviderCatalog } from "./providers";
+import { getAuthSnapshot, getProviderCatalog } from "./providers";
 
 // The stored subdocument keeps both part kinds in one flat shape, so narrow it
 // back to the discriminated union on the way out. Unknown kinds are dropped
@@ -99,10 +99,11 @@ export class UserManager {
   }
 
   private async sendInitialState(user: User) {
-    const [workspaces, sessions, providers] = await Promise.all([
+    const [workspaces, sessions, providers, authSnapshot] = await Promise.all([
       WorkspaceModel.find(),
       SessionModel.find(),
       getProviderCatalog(),
+      getAuthSnapshot(),
     ]);
 
     const response: Workspace[] = workspaces.map((w) => ({
@@ -131,6 +132,12 @@ export class UserManager {
         })),
     }));
 
-    user.sendMessage({ type: "init", workspaces: response, providers });
+    user.sendMessage({
+      type: "init",
+      workspaces: response,
+      providers,
+      providerAuth: authSnapshot.statuses,
+      providerDescriptors: authSnapshot.descriptors,
+    });
   }
 }

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, MessageSquare } from "lucide-react";
 import { ICON_STROKE } from "../constants";
+import { composerPlaceholder } from "../lib/composer";
 import { useApp } from "../context/AppContext";
 import { send, partsOf } from "../lib/helpers";
 import type { ToolPart } from "../types";
@@ -26,6 +27,9 @@ export function ChatPane() {
     runStartedAt,
     thinkingTokens,
     providers,
+    providerAuth,
+    setAuthModalOpen,
+    setAuthModalProviderId,
     updateSessionConfig,
   } = useApp();
   const [draft, setDraft] = useState("");
@@ -87,17 +91,24 @@ export function ChatPane() {
   const currentProvider = active?.session.provider || "claude";
   const providerInfo = providers.find((p) => p.id === currentProvider);
   const availableModels = providerInfo?.models || [];
+  // A session saved with a since-retired model would otherwise show a blank
+  // picker; the backend runs such sessions on the default model too.
+  const savedModel = active?.session.model;
   const currentModel =
-    active?.session.model ||
+    (savedModel && availableModels.some((m) => m.id === savedModel)
+      ? savedModel
+      : undefined) ||
     providerInfo?.defaultModel ||
     availableModels[0]?.id ||
     "";
   const currentEffort = active?.session.effort || "high";
 
   const selectedModelInfo = availableModels.find((m) => m.id === currentModel);
-  const supportsEffort =
-    selectedModelInfo?.supportsEffort ??
-    (currentProvider === "claude" && currentModel.includes("sonnet-3-7"));
+  const supportsEffort = selectedModelInfo?.supportsEffort ?? false;
+
+  const currentProviderAuth = providerAuth[currentProvider];
+  const isCurrentProviderAuth = currentProviderAuth?.isAuthenticated ?? false;
+  const canChat = online && !isWorking && isCurrentProviderAuth;
 
   const handleProviderChange = (newProvider: string) => {
     if (!active) return;
@@ -131,7 +142,7 @@ export function ChatPane() {
 
   const submit = () => {
     const trimmed = draft.trim();
-    if (trimmed === "" || !online || isWorking) {
+    if (trimmed === "" || !online || isWorking || !isCurrentProviderAuth) {
       return;
     }
 
@@ -251,6 +262,32 @@ export function ChatPane() {
               </SelectContent>
             </Select>
 
+            {/* Provider Auth Status Button */}
+            <button
+              type="button"
+              onClick={() => {
+                setAuthModalProviderId(currentProvider);
+                setAuthModalOpen(true);
+              }}
+              className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[11px] font-medium border transition-colors motion-reduce:transition-none ${
+                isCurrentProviderAuth
+                  ? "border-success/30 bg-success/10 text-success hover:bg-success/20"
+                  : "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
+              }`}
+              title={
+                isCurrentProviderAuth
+                  ? currentProviderAuth?.details || "Authenticated"
+                  : "Not authenticated. Click to sign in."
+              }
+            >
+              <span
+                className={`size-1.5 rounded-full ${
+                  isCurrentProviderAuth ? "bg-success" : "bg-warning"
+                }`}
+              />
+              <span>{isCurrentProviderAuth ? "Signed In" : "Sign In"}</span>
+            </button>
+
             {/* Model */}
             <Select
               value={currentModel}
@@ -314,8 +351,12 @@ export function ChatPane() {
             id="composer"
             rows={1}
             value={draft}
-            disabled={isWorking}
-            placeholder={isWorking ? "Waiting for the agent" : "Send a message"}
+            disabled={isWorking || !isCurrentProviderAuth}
+            placeholder={composerPlaceholder({
+              signedIn: isCurrentProviderAuth,
+              working: isWorking,
+              providerName: providerInfo?.name || currentProvider,
+            })}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
@@ -328,7 +369,12 @@ export function ChatPane() {
           <button
             type="submit"
             aria-label="Send message"
-            disabled={!online || isWorking || draft.trim() === ""}
+            disabled={
+              !online ||
+              isWorking ||
+              draft.trim() === "" ||
+              !isCurrentProviderAuth
+            }
             className="rounded-md bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:translate-y-px disabled:opacity-50 motion-reduce:transition-none"
           >
             <ArrowUp strokeWidth={ICON_STROKE} className="size-4" />
@@ -338,9 +384,28 @@ export function ChatPane() {
           <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
             Disconnected from the server, so messages cannot be saved.
           </p>
+        ) : !isCurrentProviderAuth ? (
+          <p className="mx-auto mt-2 max-w-4xl text-xs text-warning">
+            {currentProviderAuth?.details ||
+              `Not signed in to ${currentProvider}. Connect a provider to enable chat.`}{" "}
+            {currentProviderAuth?.connectedSubProviders &&
+              currentProviderAuth.connectedSubProviders.length > 0 && (
+                <span className="text-muted-foreground">
+                  • Connected {currentProviderAuth.connectedSubProviders.length}{" "}
+                  provider(s):{" "}
+                  {currentProviderAuth.connectedSubProviders.join(", ")}
+                </span>
+              )}
+          </p>
         ) : isWorking ? (
           <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
             The agent is still working on this session. One turn at a time.
+          </p>
+        ) : currentProviderAuth?.connectedSubProviders &&
+          currentProviderAuth.connectedSubProviders.length > 0 ? (
+          <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
+            Connected {currentProviderAuth.connectedSubProviders.length}{" "}
+            provider(s): {currentProviderAuth.connectedSubProviders.join(", ")}
           </p>
         ) : null}
       </form>

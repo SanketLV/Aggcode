@@ -45,6 +45,27 @@ export const DeleteSessionSchema = z.object({
 
 export type DeleteSessionSchemaType = z.infer<typeof DeleteSessionSchema>;
 
+export const ProviderLoginSchema = z.object({
+  providerId: z.string(),
+  method: z.string(),
+  credentials: z.record(z.string(), z.string()).optional(),
+});
+
+export type ProviderLoginSchemaType = z.infer<typeof ProviderLoginSchema>;
+
+export const ProviderLogoutSchema = z.object({
+  providerId: z.string(),
+  target: z.string().optional(),
+});
+
+export type ProviderLogoutSchemaType = z.infer<typeof ProviderLogoutSchema>;
+
+export const GetProviderAuthSchema = z.object({
+  providerId: z.string().optional(),
+});
+
+export type GetProviderAuthSchemaType = z.infer<typeof GetProviderAuthSchema>;
+
 export type IncomingMessageType =
   | {
       type: "create-session";
@@ -69,4 +90,16 @@ export type IncomingMessageType =
   | {
       type: "delete-session";
       payload: DeleteSessionSchemaType;
+    }
+  | {
+      type: "provider-login";
+      payload: ProviderLoginSchemaType;
+    }
+  | {
+      type: "provider-logout";
+      payload: ProviderLogoutSchemaType;
+    }
+  | {
+      type: "get-provider-auth";
+      payload: GetProviderAuthSchemaType;
     };

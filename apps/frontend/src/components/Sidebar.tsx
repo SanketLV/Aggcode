@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronRight, Plus, Trash } from "lucide-react";
+import { ChevronRight, Key, Plus, Trash } from "lucide-react";
 import { ICON_STROKE } from "../constants";
 import { useApp } from "../context/AppContext";
 import { send } from "../lib/helpers";
@@ -21,6 +21,8 @@ export function Sidebar() {
     setActiveSessionId,
     openWorkspaceId,
     setOpenWorkspaceId,
+    setAuthModalOpen,
+    setAuthModalProviderId,
   } = useApp();
   const [path, setPath] = useState("");
   const [deleteModalOpen, setDeleteModalOpen] = useState(false);
@@ -90,11 +92,24 @@ export function Sidebar() {
 
   return (
     <aside className="flex w-72 shrink-0 flex-col overflow-x-hidden border-r border-border bg-card">
-      <div className="border-b border-border px-4 py-3">
-        <h1 className="text-sm font-semibold tracking-tight">Aggcode</h1>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          {online ? "Connected" : "Connection lost. Reload to reconnect."}
-        </p>
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div>
+          <h1 className="text-sm font-semibold tracking-tight">Aggcode</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            {online ? "Connected" : "Connection lost. Reload to reconnect."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            setAuthModalProviderId(null);
+            setAuthModalOpen(true);
+          }}
+          title="Manage AI Providers"
+          className="flex items-center justify-center size-7 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border border-border/60"
+        >
+          <Key strokeWidth={ICON_STROKE} className="size-3.5" />
+        </button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto p-2">

@@ -1,7 +1,23 @@
+import fs from "fs";
+import path from "path";
 import { createOpencodeClient } from "@opencode-ai/sdk";
+// v1 has no provider-credential removal; v2 exposes DELETE /auth/{providerID}.
+import { createOpencodeClient as createOpencodeClientV2 } from "@opencode-ai/sdk/v2";
 import type { ModelOption } from "commons/types";
+import { ProviderConfigModel } from "db/client";
+import {
+  connectWithOwnership,
+  isValidSubProviderId,
+  planOpenCodeLogout,
+} from "./authScope";
 import { ensureOpenCodeServer } from "./serverManager";
-import type { AgentEvent, AgentProvider, AgentRunParams } from "./types";
+import type {
+  AgentEvent,
+  AgentProvider,
+  AgentRunParams,
+  AuthProviderPlugin,
+  ProviderAuthStatus,
+} from "./types";
 import { buildWorkspaceSessionSummary } from "./workspaceContext";
 
 // Tool inputs are free-form JSON, so pick the field that best identifies the
@@ -47,6 +63,249 @@ function toolDetail(input: unknown, cwd: string): string {
 export class OpenCodeProvider implements AgentProvider {
   id = "opencode";
   name = "OpenCode";
+
+  auth: AuthProviderPlugin = {
+    getAuthMethods: () => [
+      {
+        id: "connect",
+        label: "Connect Model Provider (API Key)",
+        type: "api_key",
+        description:
+          "Connect an external AI provider (e.g. openrouter, openai, anthropic, deepseek, google, etc.) to OpenCode.",
+        fields: [
+          {
+            id: "subProvider",
+            label: "Provider ID",
+            type: "text",
+            placeholder: "openrouter / openai / anthropic / deepseek",
+            required: true,
+            description: "Identifier of the provider to connect.",
+          },
+          {
+            id: "apiKey",
+            label: "API Key",
+            type: "password",
+            placeholder: "Provider API key",
+            required: true,
+            description: "API Key for the provider.",
+          },
+        ],
+      },
+    ],
+
+    getAuthStatus: async (): Promise<ProviderAuthStatus> => {
+      try {
+        const baseUrl = await ensureOpenCodeServer();
+        const client = createOpencodeClient({ baseUrl });
+        const provList = await client.provider.list();
+        const connected = provList.data?.connected || [];
+
+        const home = process.env.USERPROFILE || process.env.HOME || "";
+        const authPath = path.join(
+          home,
+          ".local",
+          "share",
+          "opencode",
+          "auth.json",
+        );
+        let extraProviders: string[] = [];
+        if (fs.existsSync(authPath)) {
+          try {
+            const parsed = JSON.parse(fs.readFileSync(authPath, "utf8"));
+            extraProviders = Object.keys(parsed);
+          } catch (err) {
+            console.warn(`[opencode auth] Unreadable ${authPath}:`, err);
+          }
+        }
+        const allConnected = Array.from(
+          new Set([...connected, ...extraProviders]),
+        );
+
+        // Gated: chat is disabled when no external provider is connected,
+        // even though free models exist. The built-in "opencode" provider
+        // itself does not count as signed in.
+        const externalConnected = allConnected.filter(
+          (id) => id.toLowerCase() !== "opencode",
+        );
+        const isAuthenticated = externalConnected.length > 0;
+
+        return {
+          providerId: "opencode",
+          isAuthenticated,
+          method: isAuthenticated ? "api_key" : "none",
+          accountName: isAuthenticated
+            ? externalConnected.join(", ")
+            : "Not signed in",
+          details: isAuthenticated
+            ? `Connected ${externalConnected.length} provider${externalConnected.length === 1 ? "" : "s"}: ${externalConnected.join(", ")}`
+            : "Not signed in. Connect a provider to enable chat. Free models are disabled when signed out.",
+          connectedSubProviders: externalConnected,
+        };
+      } catch (err) {
+        return {
+          providerId: "opencode",
+          isAuthenticated: false,
+          method: "none",
+          details: `OpenCode server offline: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        };
+      }
+    },
+
+    login: async ({
+      method,
+      credentials,
+    }): Promise<{ success: boolean; message?: string }> => {
+      if (method === "connect") {
+        const subProvider = credentials?.subProvider?.trim().toLowerCase();
+        const apiKey = credentials?.apiKey?.trim();
+
+        if (!subProvider || !apiKey) {
+          return {
+            success: false,
+            message: "Provider name and API key are required.",
+          };
+        }
+        if (!isValidSubProviderId(subProvider)) {
+          return {
+            success: false,
+            message: `'${subProvider}' is not a valid provider id. Use letters, digits, '-' or '_'.`,
+          };
+        }
+
+        let baseUrl: string;
+        try {
+          baseUrl = await ensureOpenCodeServer();
+        } catch (err) {
+          return {
+            success: false,
+            message: `OpenCode server is not available: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
+
+        const result = await connectWithOwnership({
+          setKey: async () => {
+            const res = await createOpencodeClient({ baseUrl }).auth.set({
+              path: { id: subProvider },
+              body: { type: "api", key: apiKey },
+            });
+            if (res.error) {
+              throw new Error(JSON.stringify(res.error));
+            }
+          },
+          // Record that Aggcode made this connection, so sign-out can remove
+          // it without touching providers connected through the opencode CLI.
+          recordOwner: async () => {
+            await ProviderConfigModel.findOneAndUpdate(
+              { providerId: "opencode" },
+              {
+                $set: {
+                  [`credentials.${subProvider}`]: "connected-by-aggcode",
+                  updatedAt: new Date(),
+                },
+              },
+              { upsert: true },
+            );
+          },
+          removeKey: async () => {
+            const res = await createOpencodeClientV2({ baseUrl }).auth.remove({
+              providerID: subProvider,
+            });
+            if (res.error) {
+              throw new Error(JSON.stringify(res.error));
+            }
+          },
+        });
+
+        if (result.ok) {
+          return {
+            success: true,
+            message: `Successfully connected ${subProvider} to OpenCode.`,
+          };
+        }
+        switch (result.reason) {
+          case "set-failed":
+            return {
+              success: false,
+              message: `OpenCode rejected the credentials for ${subProvider}: ${result.error}`,
+            };
+          case "rolled-back":
+            return {
+              success: false,
+              message: `Could not save the connection (${result.error}), so ${subProvider} was disconnected again. Try again.`,
+            };
+          case "orphaned":
+            return {
+              success: false,
+              message: `Could not save the connection (${result.error}), and ${subProvider} is still connected in OpenCode. Run \`opencode auth logout\` in a terminal to remove it.`,
+            };
+        }
+      }
+
+      return { success: false, message: `Unsupported method: ${method}` };
+    },
+
+    // OpenCode's credential store is machine-wide and shared with the
+    // `opencode` CLI, so only providers Aggcode connected are removed, and only
+    // through OpenCode's own API rather than by editing auth.json.
+    logout: async (params): Promise<{ success: boolean; message?: string }> => {
+      const config = await ProviderConfigModel.findOne({
+        providerId: "opencode",
+      });
+      const appConnected = Array.from(config?.credentials?.keys() ?? []);
+      const { remove, notOwned } = planOpenCodeLogout(
+        appConnected,
+        params?.target,
+      );
+
+      if (notOwned.length > 0) {
+        return {
+          success: false,
+          message: `${notOwned.join(", ")} was connected outside Aggcode, so Aggcode leaves it alone. Run \`opencode auth logout\` in a terminal to remove it.`,
+        };
+      }
+      if (remove.length === 0) {
+        return {
+          success: true,
+          message: "Aggcode has not connected any providers to OpenCode.",
+        };
+      }
+
+      const baseUrl = await ensureOpenCodeServer();
+      const client = createOpencodeClientV2({ baseUrl });
+      const removed: string[] = [];
+      const failed: string[] = [];
+      for (const id of remove) {
+        const res = await client.auth.remove({ providerID: id });
+        if (res.error) {
+          console.warn(`[opencode auth] Failed to remove ${id}:`, res.error);
+          failed.push(id);
+          continue;
+        }
+        await ProviderConfigModel.updateOne(
+          { providerId: "opencode" },
+          { $unset: { [`credentials.${id}`]: "" } },
+        );
+        removed.push(id);
+      }
+
+      if (failed.length > 0) {
+        return {
+          success: false,
+          message: `Could not disconnect ${failed.join(", ")} from OpenCode.${
+            removed.length > 0 ? ` Disconnected ${removed.join(", ")}.` : ""
+          }`,
+        };
+      }
+      return {
+        success: true,
+        message: `Disconnected ${removed.join(", ")} from OpenCode.`,
+      };
+    },
+  };
 
   async getAvailableModels(): Promise<ModelOption[]> {
     const fallbackModels: ModelOption[] = [

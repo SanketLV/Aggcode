@@ -38,7 +38,9 @@ export async function ensureOpenCodeServer(): Promise<string> {
     }
 
     // 2. Start an embedded server
-    console.log(`[opencode] Starting OpenCode server on port ${defaultPort}...`);
+    console.log(
+      `[opencode] Starting OpenCode server on port ${defaultPort}...`,
+    );
     try {
       const server = await createOpencodeServer({
         hostname: "127.0.0.1",

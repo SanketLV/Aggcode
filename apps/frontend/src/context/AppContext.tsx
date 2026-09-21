@@ -1,6 +1,9 @@
 import type {
+  IncomingMessageType,
   MessagePart,
   OutgoingMessageType,
+  ProviderAuthStatus,
+  ProviderDescriptor,
   ProviderOption,
 } from "commons/types";
 import {
@@ -10,10 +13,14 @@ import {
   type SetStateAction,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from "react";
 import { useSocket, type SocketStatus } from "../hooks/useSocket";
 import { appendDelta, appendMessage, send } from "../lib/helpers";
+
+// Long enough for OpenCode's server to cold-start on a first connect.
+const AUTH_ACTION_TIMEOUT_MS = 30_000;
 
 export type UiWorkspace = {
   id: string;
@@ -48,6 +55,26 @@ type AppContextValue = {
   runStartedAt: Record<string, number>;
   thinkingTokens: Record<string, number>;
   providers: ProviderOption[];
+  providerAuth: Record<string, ProviderAuthStatus>;
+  providerDescriptors: ProviderDescriptor[];
+  authModalOpen: boolean;
+  setAuthModalOpen: Dispatch<SetStateAction<boolean>>;
+  authModalProviderId: string | null;
+  setAuthModalProviderId: Dispatch<SetStateAction<string | null>>;
+  authActionState: {
+    loading: boolean;
+    providerId?: string;
+    action?: string;
+    message?: string;
+    error?: string;
+  };
+  loginProvider: (
+    providerId: string,
+    method: string,
+    credentials?: Record<string, string>,
+  ) => void;
+  logoutProvider: (providerId: string, target?: string) => void;
+  refreshProviderAuth: () => void;
   updateSessionConfig: (
     sessionId: string,
     config: { provider: string; model?: string; effort?: string },
@@ -71,6 +98,26 @@ export function AppProvider({ children }: { children: ReactNode }) {
     {},
   );
   const [providers, setProviders] = useState<ProviderOption[]>([]);
+  const [providerAuth, setProviderAuth] = useState<
+    Record<string, ProviderAuthStatus>
+  >({});
+  const [providerDescriptors, setProviderDescriptors] = useState<
+    ProviderDescriptor[]
+  >([]);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalProviderId, setAuthModalProviderId] = useState<string | null>(
+    null,
+  );
+  const [authActionState, setAuthActionState] = useState<{
+    loading: boolean;
+    providerId?: string;
+    action?: string;
+    message?: string;
+    error?: string;
+  }>({ loading: false });
+  // The spinner clears only on provider-auth-result, so a request that never
+  // left (socket closed) or never got answered must clear it here instead.
+  const authTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (status !== "open") {
@@ -91,6 +138,37 @@ export function AppProvider({ children }: { children: ReactNode }) {
         if (data.providers) {
           setProviders(data.providers);
         }
+        if (data.providerAuth) {
+          setProviderAuth(data.providerAuth);
+        }
+        if (data.providerDescriptors) {
+          setProviderDescriptors(data.providerDescriptors);
+        }
+      }
+
+      if (data.type === "provider-auth-updated") {
+        setProviderAuth(data.payload.statuses);
+        if (data.payload.descriptors) {
+          setProviderDescriptors(data.payload.descriptors);
+        }
+      }
+
+      if (data.type === "provider-catalog-updated") {
+        setProviders(data.payload.providers);
+      }
+
+      if (data.type === "provider-auth-result") {
+        if (authTimeoutRef.current) {
+          clearTimeout(authTimeoutRef.current);
+          authTimeoutRef.current = null;
+        }
+        setAuthActionState({
+          loading: false,
+          providerId: data.payload.providerId,
+          action: data.payload.action,
+          message: data.payload.success ? data.payload.message : undefined,
+          error: !data.payload.success ? data.payload.message : undefined,
+        });
       }
 
       if (data.type === "session-config-updated") {
@@ -142,7 +220,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         // Clear active session if it belonged to the deleted workspace
         setWorkspaces((current) => {
           const deletedWorkspace = workspaces.find((w) => w.id === workspaceId);
-          if (deletedWorkspace?.sessions.some((s) => s.id === activeSessionId)) {
+          if (
+            deletedWorkspace?.sessions.some((s) => s.id === activeSessionId)
+          ) {
             setActiveSessionId(null);
           }
           return current;
@@ -264,6 +344,59 @@ export function AppProvider({ children }: { children: ReactNode }) {
     });
   };
 
+  const startAuthAction = (
+    providerId: string,
+    action: "login" | "logout",
+    message: IncomingMessageType,
+  ) => {
+    if (authTimeoutRef.current) {
+      clearTimeout(authTimeoutRef.current);
+    }
+    if (!send(socket, message)) {
+      setAuthActionState({
+        loading: false,
+        providerId,
+        action,
+        error: "Not connected to the server. Reload the page and try again.",
+      });
+      return;
+    }
+    setAuthActionState({ loading: true, providerId, action });
+    authTimeoutRef.current = setTimeout(() => {
+      setAuthActionState({
+        loading: false,
+        providerId,
+        action,
+        error: "The server did not answer. Check the backend and try again.",
+      });
+    }, AUTH_ACTION_TIMEOUT_MS);
+  };
+
+  const loginProvider = (
+    providerId: string,
+    method: string,
+    credentials?: Record<string, string>,
+  ) => {
+    startAuthAction(providerId, "login", {
+      type: "provider-login",
+      payload: { providerId, method, credentials },
+    });
+  };
+
+  const logoutProvider = (providerId: string, target?: string) => {
+    startAuthAction(providerId, "logout", {
+      type: "provider-logout",
+      payload: { providerId, target },
+    });
+  };
+
+  const refreshProviderAuth = () => {
+    send(socket, {
+      type: "get-provider-auth",
+      payload: {},
+    });
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -282,6 +415,16 @@ export function AppProvider({ children }: { children: ReactNode }) {
         runStartedAt,
         thinkingTokens,
         providers,
+        providerAuth,
+        providerDescriptors,
+        authModalOpen,
+        setAuthModalOpen,
+        authModalProviderId,
+        setAuthModalProviderId,
+        authActionState,
+        loginProvider,
+        logoutProvider,
+        refreshProviderAuth,
         updateSessionConfig,
       }}
     >
