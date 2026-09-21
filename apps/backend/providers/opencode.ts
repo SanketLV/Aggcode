@@ -5,7 +5,11 @@ import { createOpencodeClient } from "@opencode-ai/sdk";
 import { createOpencodeClient as createOpencodeClientV2 } from "@opencode-ai/sdk/v2";
 import type { ModelOption } from "commons/types";
 import { ProviderConfigModel } from "db/client";
-import { isValidSubProviderId, planOpenCodeLogout } from "./authScope";
+import {
+  connectWithOwnership,
+  isValidSubProviderId,
+  planOpenCodeLogout,
+} from "./authScope";
 import { ensureOpenCodeServer } from "./serverManager";
 import type {
   AgentEvent,
@@ -170,44 +174,74 @@ export class OpenCodeProvider implements AgentProvider {
           };
         }
 
+        let baseUrl: string;
         try {
-          const baseUrl = await ensureOpenCodeServer();
-          const client = createOpencodeClient({ baseUrl });
-          const res = await client.auth.set({
-            path: { id: subProvider },
-            body: { type: "api", key: apiKey },
-          });
-          if (res.error) {
-            return {
-              success: false,
-              message: `OpenCode rejected the credentials for ${subProvider}: ${JSON.stringify(res.error)}`,
-            };
-          }
+          baseUrl = await ensureOpenCodeServer();
+        } catch (err) {
+          return {
+            success: false,
+            message: `OpenCode server is not available: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
 
+        const result = await connectWithOwnership({
+          setKey: async () => {
+            const res = await createOpencodeClient({ baseUrl }).auth.set({
+              path: { id: subProvider },
+              body: { type: "api", key: apiKey },
+            });
+            if (res.error) {
+              throw new Error(JSON.stringify(res.error));
+            }
+          },
           // Record that Aggcode made this connection, so sign-out can remove
           // it without touching providers connected through the opencode CLI.
-          await ProviderConfigModel.findOneAndUpdate(
-            { providerId: "opencode" },
-            {
-              $set: {
-                [`credentials.${subProvider}`]: "connected-by-aggcode",
-                updatedAt: new Date(),
+          recordOwner: async () => {
+            await ProviderConfigModel.findOneAndUpdate(
+              { providerId: "opencode" },
+              {
+                $set: {
+                  [`credentials.${subProvider}`]: "connected-by-aggcode",
+                  updatedAt: new Date(),
+                },
               },
-            },
-            { upsert: true },
-          );
+              { upsert: true },
+            );
+          },
+          removeKey: async () => {
+            const res = await createOpencodeClientV2({ baseUrl }).auth.remove({
+              providerID: subProvider,
+            });
+            if (res.error) {
+              throw new Error(JSON.stringify(res.error));
+            }
+          },
+        });
 
+        if (result.ok) {
           return {
             success: true,
             message: `Successfully connected ${subProvider} to OpenCode.`,
           };
-        } catch (err) {
-          return {
-            success: false,
-            message: `Failed to set OpenCode credentials: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          };
+        }
+        switch (result.reason) {
+          case "set-failed":
+            return {
+              success: false,
+              message: `OpenCode rejected the credentials for ${subProvider}: ${result.error}`,
+            };
+          case "rolled-back":
+            return {
+              success: false,
+              message: `Could not save the connection (${result.error}), so ${subProvider} was disconnected again. Try again.`,
+            };
+          case "orphaned":
+            return {
+              success: false,
+              message: `Could not save the connection (${result.error}), and ${subProvider} is still connected in OpenCode. Run \`opencode auth logout\` in a terminal to remove it.`,
+            };
         }
       }
 

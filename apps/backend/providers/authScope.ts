@@ -136,3 +136,43 @@ export async function buildAuthSnapshot(providers: AuthCapable[]): Promise<{
     descriptors: entries,
   };
 }
+
+export type ConnectResult =
+  | { ok: true }
+  | {
+      ok: false;
+      reason: "set-failed" | "rolled-back" | "orphaned";
+      error: string;
+    };
+
+// OpenCode's credential store and Aggcode's ownership marker live in two
+// systems with no shared transaction. If the marker cannot be written, the key
+// is taken back out of OpenCode, since a key without a marker is one Aggcode's
+// own sign-out refuses to remove.
+export async function connectWithOwnership(steps: {
+  setKey: () => Promise<void>;
+  recordOwner: () => Promise<void>;
+  removeKey: () => Promise<void>;
+}): Promise<ConnectResult> {
+  try {
+    await steps.setKey();
+  } catch (err) {
+    return { ok: false, reason: "set-failed", error: errorText(err) };
+  }
+  try {
+    await steps.recordOwner();
+    return { ok: true };
+  } catch (recordErr) {
+    console.warn("[opencode auth] Ownership marker not saved:", recordErr);
+    try {
+      await steps.removeKey();
+      return { ok: false, reason: "rolled-back", error: errorText(recordErr) };
+    } catch (removeErr) {
+      console.error(
+        "[opencode auth] Rollback failed, key left in OpenCode:",
+        removeErr,
+      );
+      return { ok: false, reason: "orphaned", error: errorText(recordErr) };
+    }
+  }
+}
