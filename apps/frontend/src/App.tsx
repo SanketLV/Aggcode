@@ -5,6 +5,7 @@ import { useApp } from "./context/AppContext";
 import { ConnectingShell } from "./components/ConnectingShell";
 import { Sidebar } from "./components/Sidebar";
 import { ChatPane } from "./components/ChatPane";
+import { ProviderAuthModal } from "./components/ProviderAuthModal";
 
 function AppLayout() {
   const { loading } = useApp();
@@ -17,6 +18,7 @@ function AppLayout() {
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       <Sidebar />
       <ChatPane />
+      <ProviderAuthModal />
     </div>
   );
 }

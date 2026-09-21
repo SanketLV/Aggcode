@@ -3,7 +3,9 @@ import {
   AddMessageSchema,
   CreateSessionSchema,
   CreateWorkspaceSchema,
+  GetProviderAuthSchema,
   ProviderLoginSchema,
+  ProviderLogoutSchema,
   UpdateSessionConfigSchema,
 } from "./incoming";
 
@@ -98,5 +100,54 @@ describe("ProviderLoginSchema", () => {
       ProviderLoginSchema.safeParse({ ...base, credentials: { key: 1 } })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("ProviderLoginSchema required fields", () => {
+  test("requires providerId and method", () => {
+    expect(ProviderLoginSchema.safeParse({ method: "api_key" }).success).toBe(
+      false,
+    );
+    expect(
+      ProviderLoginSchema.safeParse({ providerId: "claude" }).success,
+    ).toBe(false);
+  });
+
+  test("credentials are optional (OAuth sends none)", () => {
+    expect(
+      ProviderLoginSchema.safeParse({ providerId: "claude", method: "oauth" })
+        .success,
+    ).toBe(true);
+  });
+});
+
+describe("ProviderLogoutSchema", () => {
+  test("target is optional: omitting it means every provider Aggcode owns", () => {
+    expect(ProviderLogoutSchema.parse({ providerId: "opencode" })).toEqual({
+      providerId: "opencode",
+    });
+    expect(
+      ProviderLogoutSchema.parse({ providerId: "opencode", target: "openai" }),
+    ).toEqual({ providerId: "opencode", target: "openai" });
+  });
+
+  test("rejects a missing providerId or non-string target", () => {
+    expect(ProviderLogoutSchema.safeParse({}).success).toBe(false);
+    expect(
+      ProviderLogoutSchema.safeParse({ providerId: "opencode", target: 1 })
+        .success,
+    ).toBe(false);
+  });
+});
+
+describe("GetProviderAuthSchema", () => {
+  test("accepts an empty payload", () => {
+    expect(GetProviderAuthSchema.safeParse({}).success).toBe(true);
+  });
+
+  test("rejects a non-string providerId", () => {
+    expect(GetProviderAuthSchema.safeParse({ providerId: 5 }).success).toBe(
+      false,
+    );
   });
 });
