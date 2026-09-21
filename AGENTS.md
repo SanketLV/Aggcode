@@ -8,10 +8,15 @@ Bun + Turborepo monorepo. WebSocket-only app (no REST). MongoDB backend, React f
 bun install                          # install all workspaces
 bun run dev                          # backend :3000 + frontend :3001
 bun run build                        # production frontend build
+bun run test                         # bun test, via turbo
 bun run format                       # prettier
 ```
 
-No test runner is configured. No lint or typecheck tasks are wired up (they exist in turbo.json but both apps have no-op scripts).
+Tests use `bun test`. Only `packages/commons` has tests so far. A package joins `bun run test` by adding `"test": "bun test"` to its scripts. No lint or typecheck tasks are wired up (they exist in turbo.json but both apps have no-op scripts).
+
+## Workflow
+
+spec (numbered acceptance criteria) → test-first build → `before-and-after` for UI changes (capture "before" before editing; never the default public 0x0.st upload) → `bun run test` + `bun run build` + review → `unslop` on commit/PR prose → PR into `dev` → `/sync`. Full version in `CLAUDE.md` under "Workflow".
 
 ## Package manager
 
