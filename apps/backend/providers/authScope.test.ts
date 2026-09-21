@@ -3,6 +3,7 @@ import type { ProviderAuthStatus } from "commons/types";
 import {
   buildAuthSnapshot,
   chatGateRejection,
+  connectWithOwnership,
   isValidSubProviderId,
   memoizeAsync,
   planOpenCodeLogout,
@@ -225,5 +226,64 @@ describe("buildAuthSnapshot", () => {
     const snap = await buildAuthSnapshot([{ id: "local", name: "Local" }]);
     expect(snap.statuses.local?.isAuthenticated).toBe(true);
     expect(snap.descriptors[0]?.authMethods).toEqual([]);
+  });
+});
+
+describe("connectWithOwnership", () => {
+  const ok = async () => {};
+  const fail = (msg: string) => async () => {
+    throw new Error(msg);
+  };
+
+  test("records ownership after OpenCode accepts the key", async () => {
+    const calls: string[] = [];
+    const res = await connectWithOwnership({
+      setKey: async () => void calls.push("set"),
+      recordOwner: async () => void calls.push("record"),
+      removeKey: async () => void calls.push("remove"),
+    });
+    expect(res).toEqual({ ok: true });
+    expect(calls).toEqual(["set", "record"]);
+  });
+
+  test("a rejected key records nothing", async () => {
+    const calls: string[] = [];
+    const res = await connectWithOwnership({
+      setKey: fail("bad key"),
+      recordOwner: async () => void calls.push("record"),
+      removeKey: async () => void calls.push("remove"),
+    });
+    expect(res).toEqual({ ok: false, reason: "set-failed", error: "bad key" });
+    expect(calls).toEqual([]);
+  });
+
+  // Otherwise the key stays in OpenCode with no marker, and Aggcode's own
+  // sign-out would refuse to remove it.
+  test("a failed ownership write rolls the key back out of OpenCode", async () => {
+    const calls: string[] = [];
+    const res = await connectWithOwnership({
+      setKey: ok,
+      recordOwner: fail("mongo down"),
+      removeKey: async () => void calls.push("remove"),
+    });
+    expect(calls).toEqual(["remove"]);
+    expect(res).toEqual({
+      ok: false,
+      reason: "rolled-back",
+      error: "mongo down",
+    });
+  });
+
+  test("reports a key left behind when the rollback also fails", async () => {
+    const res = await connectWithOwnership({
+      setKey: ok,
+      recordOwner: fail("mongo down"),
+      removeKey: fail("opencode down"),
+    });
+    expect(res).toEqual({
+      ok: false,
+      reason: "orphaned",
+      error: "mongo down",
+    });
   });
 });
