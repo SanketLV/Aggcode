@@ -1,0 +1,68 @@
+{
+  "v": 3,
+  "attachments": {},
+  "boards": {
+    "Components.dc.html": {
+      "h": 2160,
+      "title": "Design system sheet",
+      "w": 1280,
+      "x": 0,
+      "y": 1300
+    },
+    "EmptySession.dc.html": {
+      "h": 900,
+      "title": "New session",
+      "w": 1440,
+      "x": 1520,
+      "y": 0
+    },
+    "Main.dc.html": {
+      "h": 900,
+      "title": "Session transcript",
+      "w": 1440,
+      "x": 0,
+      "y": 0
+    },
+    "Sidebar.dc.html": {
+      "h": 900,
+      "title": "Sidebar component",
+      "w": 288,
+      "x": 1360,
+      "y": 1300
+    }
+  },
+  "createdOnFiles": {
+    "at": "2026-09-22T10:00:00Z",
+    "v": 1
+  },
+  "designSystems": [],
+  "launch": {
+    "view": "canvas"
+  },
+  "notes": {
+    "screens": {
+      "kind": "title1",
+      "maxW": 2960,
+      "text": "Aggcode redesign: screens",
+      "w": 240,
+      "x": 0,
+      "y": -300
+    },
+    "system": {
+      "kind": "title1",
+      "maxW": 1648,
+      "text": "Design system",
+      "w": 240,
+      "x": 0,
+      "y": 1000
+    }
+  },
+  "order": [
+    "Main.dc.html",
+    "EmptySession.dc.html",
+    "Components.dc.html",
+    "Sidebar.dc.html"
+  ],
+  "pages": [],
+  "title": "Aggcode Redesign"
+}

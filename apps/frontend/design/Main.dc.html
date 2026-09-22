@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session transcript</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0e0f13}
+a{color:#74c0e0}a:hover{color:#a9d4ea}
+</style>
+</helmet>
+<div style="width: 1440px; height: 900px; display: flex; background: #0e0f13; color: #f1f2f5; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; overflow: hidden;">
+
+<dc-import name="Sidebar" active="reconnect" hint-size="288px,900px"></dc-import>
+
+<main style="flex-grow: 1; min-width: 0; height: 900px; display: flex; flex-direction: column;">
+
+<header style="height: 56px; flex-shrink: 0; box-sizing: border-box; padding: 0 16px 0 20px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<div style="flex-grow: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px;">
+<h1 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap;">Fix reconnect in useSocket</h1>
+<span style="font-size: 12px; color: #9fa2ad;">aggcode</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f; white-space: nowrap;">D:\Projects\aggcode</span>
+</div>
+<button type="button" aria-label="Session actions" style="width: 28px; height: 28px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle><circle cx="5" cy="12" r="1"></circle></svg></button>
+</header>
+
+<div style="flex-grow: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 20px 28px;">
+<ol style="list-style: none; margin: 0 auto; padding: 0; width: 100%; max-width: 768px; display: flex; flex-direction: column; gap: 24px;">
+
+<li style="display: flex; justify-content: flex-end;">
+<div style="max-width: 80%; box-sizing: border-box; padding: 10px 14px; border-radius: 8px; background: #1e1f26; font-size: 14px; line-height: 1.6; color: #f1f2f5;">useSocket drops the connection when the backend restarts and never comes back. Add reconnect with backoff, and make sure the init snapshot still arrives after a reconnect.</div>
+</li>
+
+<li style="display: flex; flex-direction: column; gap: 10px;">
+<p style="margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.6;">I'll check how the socket and the init handler are wired before changing anything.</p>
+
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Read</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">apps/frontend/src/hooks/useSocket.ts</span>
+<span style="color: #83868f;">35 lines</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+</div>
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Grep</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">"onmessage" in apps/frontend/src</span>
+<span style="color: #83868f;">2 files</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+</div>
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M16 13H8"></path><path d="M16 17H8"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Read</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">apps/frontend/src/context/AppContext.tsx</span>
+<span style="color: #83868f;">442 lines</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+</div>
+</div>
+
+<p style="margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.6;">The socket is created once in an effect with no dependencies, so a <code style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; padding: 1px 5px; border-radius: 4px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.07);">close</code> event has nowhere to go. I'll move creation into a <code style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; padding: 1px 5px; border-radius: 4px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.07);">connect()</code> function and retry with capped backoff: 0.5s, 1s, 2s, up to 10s.</p>
+
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; background: #131419; overflow: hidden;">
+<div style="height: 32px; box-sizing: border-box; padding: 0 6px 0 12px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">useSocket.ts</span>
+<button type="button" aria-label="Copy code" style="width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: transparent; color: #83868f; cursor: pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg></button>
+</div>
+<pre style="margin: 0; padding: 12px 14px; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; line-height: 1.65; color: #d5d7dd; white-space: pre;">ws.<span style="color: #a9d4ea;">onclose</span> = () <span style="color: #83868f;">=&gt;</span> {
+  <span style="color: #a9d4ea;">setStatus</span>(<span style="color: #8fcfae;">"reconnecting"</span>);
+  <span style="color: #9fa2ad;">const</span> delay = Math.<span style="color: #a9d4ea;">min</span>(<span style="color: #d9b77a;">500</span> * <span style="color: #d9b77a;">2</span> ** attempt.current++, <span style="color: #d9b77a;">10_000</span>);
+  retry.current = <span style="color: #a9d4ea;">setTimeout</span>(connect, delay);
+};</pre>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 4px;">
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="true" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M13.378 15.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Edit</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">apps/frontend/src/hooks/useSocket.ts</span>
+<span style="color: #52cc98;">+28</span>
+<span style="color: #ec6f63;">−9</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+<pre style="margin: 0; padding: 10px 12px; background: #0e0f13; border-top: 1px solid rgba(255,255,255,0.07); font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.6; color: #9fa2ad; white-space: pre;"><span style="color: #ec6f63;">-  const socket = useMemo(() =&gt; new WebSocket(URL), []);</span>
+<span style="color: #52cc98;">+  const attempt = useRef(0);</span>
+<span style="color: #52cc98;">+  const retry = useRef&lt;ReturnType&lt;typeof setTimeout&gt;&gt;();</span>
+<span style="color: #52cc98;">+  const connect = useCallback(() =&gt; { … }, []);</span></pre>
+</div>
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="false" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 11 2-2-2-2"></path><path d="M11 13h4"></path><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Bash</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">bun test apps/frontend</span>
+<span style="color: #83868f;">14 pass · 3.1s</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+</div>
+</div>
+
+<p style="margin: 0; max-width: 70ch; font-size: 14px; line-height: 1.6;">Done. <code style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; padding: 1px 5px; border-radius: 4px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.07);">useSocket</code> now reconnects with capped backoff and resets the attempt counter once a socket opens. <code style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; padding: 1px 5px; border-radius: 4px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.07);">AppContext</code> re-attaches its handler to each new socket, so the init snapshot arrives after every reconnect. All 14 frontend tests pass.</p>
+</li>
+
+</ol>
+</div>
+
+<div style="flex-shrink: 0; padding: 0 20px 18px;">
+<form style="max-width: 768px; margin: 0 auto; display: flex; flex-direction: column; gap: 8px;">
+<div style="border: 1px solid rgba(116,192,224,0.45); border-radius: 12px; background: #131419; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 12px 32px -12px rgba(0,0,0,0.6); display: flex; flex-direction: column;">
+<label for="composer" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Message</label>
+<textarea id="composer" rows="2" style="resize: none; border: 0; background: transparent; padding: 14px 16px 4px; font-family: inherit; font-size: 14px; line-height: 1.6; color: #f1f2f5; outline: none;">Also show a banner while it's reconnecting, so people know why the composer is disabled.</textarea>
+<div style="display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px;">
+<button type="button" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 12px; cursor: pointer;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #52cc98;"></span>Claude<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button type="button" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 12px; cursor: pointer;">Opus 5<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<button type="button" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 12px; cursor: pointer;">High effort<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></button>
+<span style="flex-grow: 1;"></span>
+<button type="submit" aria-label="Send message" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
+</div>
+</div>
+<p style="margin: 0; padding: 0 4px; font-size: 12px; color: #83868f;">Enter to send · Shift+Enter for a new line</p>
+</form>
+</div>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+renderVals() {
+return {};
+}
+}
+</script>
+</body>
+</html>
