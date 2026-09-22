@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "exports": {
-    "./types": "./index.ts"
+    "./types": "./index.ts",
+    "./config": "./config.ts"
   },
   "scripts": {
     "test": "bun test"
