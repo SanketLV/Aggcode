@@ -96,9 +96,9 @@ describe("composerHint", () => {
   });
 
   test("signed out wins over working", () => {
-    expect(
-      composerHint({ ...base, signedIn: false, working: true }).tone,
-    ).toBe("warning");
+    expect(composerHint({ ...base, signedIn: false, working: true }).tone).toBe(
+      "warning",
+    );
   });
 
   test("working", () => {

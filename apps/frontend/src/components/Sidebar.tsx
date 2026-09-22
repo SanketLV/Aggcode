@@ -147,7 +147,10 @@ export function Sidebar() {
         </div>
         <div className="min-w-0 flex-1">
           <h1 className="text-ui font-semibold tracking-tight">Aggcode</h1>
-          <p className="flex items-center gap-1.5 text-micro text-subtle-foreground">
+          <p
+            role="status"
+            className="flex items-center gap-1.5 text-micro text-subtle-foreground"
+          >
             <span
               aria-hidden="true"
               className={`size-1.5 rounded-full ${online ? "bg-success" : "bg-warning"}`}
@@ -363,7 +366,9 @@ export function Sidebar() {
                                       )}
                                       <button
                                         type="button"
-                                        aria-current={isActive ? "true" : undefined}
+                                        aria-current={
+                                          isActive ? "true" : undefined
+                                        }
                                         onClick={() =>
                                           setActiveSessionId(session.id)
                                         }

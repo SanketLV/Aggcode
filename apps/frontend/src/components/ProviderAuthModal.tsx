@@ -114,7 +114,11 @@ export function ProviderAuthModal() {
         </DialogHeader>
 
         {/* Provider Tabs / Selector */}
-        <div role="tablist" aria-label="Providers" className="flex gap-1 border-b border-border px-4">
+        <div
+          role="tablist"
+          aria-label="Providers"
+          className="flex gap-1 border-b border-border px-4"
+        >
           {providerDescriptors.map((p) => {
             const isSelected = p.id === selectedProviderId;
             const pAuth = providerAuth[p.id];
@@ -237,7 +241,10 @@ export function ProviderAuthModal() {
 
           {/* Feedback banner */}
           {authActionState.message && (
-            <div role="status" className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-xs text-success">
+            <div
+              role="status"
+              className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-xs text-success"
+            >
               <CheckCircle2
                 strokeWidth={ICON_STROKE}
                 className="size-4 shrink-0"
@@ -247,7 +254,10 @@ export function ProviderAuthModal() {
           )}
 
           {authActionState.error && (
-            <div role="alert" className="flex items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-xs text-destructive">
+            <div
+              role="alert"
+              className="flex items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-xs text-destructive"
+            >
               <AlertCircle
                 strokeWidth={ICON_STROKE}
                 className="size-4 shrink-0"

@@ -16,13 +16,13 @@ Aggcode only runs as a developer setup: two dev servers, a MongoDB instance, and
 
 ## Features, in order
 
-| # | Spec | What it delivers | Depends on |
-| --- | --- | --- | --- |
-| 1 | `runtime-config` | Backend binds `127.0.0.1` with a configurable port. Frontend finds the backend through config instead of a hardcoded URL. The server start is a callable function Electron can use. | none |
-| 2 | `socket-auth` | Per-install token plus Origin allowlist on the WebSocket handshake. The token is delivered through the config from #1. | 1 |
-| 3 | `socket-reconnect` | `useSocket` reconnects with capped backoff, and the `init` snapshot is re-applied after a reconnect. | 1, 2 |
-| 4 | `sqlite-storage` | `packages/db` moves from mongoose to SQLite. `DB_URL` and the Mongo requirement are gone. | none (can run in parallel with 2 and 3) |
-| 5 | `electron-shell` | Electron app that starts the backend in-process on a free port, loads the UI, passes config through preload, and packages installers for all three OSes. | 1–4 |
+| #   | Spec               | What it delivers                                                                                                                                                                    | Depends on                              |
+| --- | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| 1   | `runtime-config`   | Backend binds `127.0.0.1` with a configurable port. Frontend finds the backend through config instead of a hardcoded URL. The server start is a callable function Electron can use. | none                                    |
+| 2   | `socket-auth`      | Per-install token plus Origin allowlist on the WebSocket handshake. The token is delivered through the config from #1.                                                              | 1                                       |
+| 3   | `socket-reconnect` | `useSocket` reconnects with capped backoff, and the `init` snapshot is re-applied after a reconnect.                                                                                | 1, 2                                    |
+| 4   | `sqlite-storage`   | `packages/db` moves from mongoose to SQLite. `DB_URL` and the Mongo requirement are gone.                                                                                           | none (can run in parallel with 2 and 3) |
+| 5   | `electron-shell`   | Electron app that starts the backend in-process on a free port, loads the UI, passes config through preload, and packages installers for all three OSes.                            | 1–4                                     |
 
 Each feature is its own spec, plan, branch off `dev`, and PR.
 

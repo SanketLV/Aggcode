@@ -59,12 +59,12 @@ GET /api/config
 
 Environment variables:
 
-| Variable | Read by | Default | Meaning |
-| --- | --- | --- | --- |
-| `AGGCODE_HOST` | backend | `127.0.0.1` | Interface to bind |
-| `AGGCODE_PORT` | backend, frontend server | `3000` | Backend port; `0` = any free port (backend only) |
-| `AGGCODE_BACKEND_URL` | frontend server | none | Full `ws://` URL; overrides the port-based default |
-| `AGGCODE_WEB_PORT` | frontend server | `3001` | Nice to have |
+| Variable              | Read by                  | Default     | Meaning                                            |
+| --------------------- | ------------------------ | ----------- | -------------------------------------------------- |
+| `AGGCODE_HOST`        | backend                  | `127.0.0.1` | Interface to bind                                  |
+| `AGGCODE_PORT`        | backend, frontend server | `3000`      | Backend port; `0` = any free port (backend only)   |
+| `AGGCODE_BACKEND_URL` | frontend server          | none        | Full `ws://` URL; overrides the port-based default |
+| `AGGCODE_WEB_PORT`    | frontend server          | `3001`      | Nice to have                                       |
 
 ## UI changes
 
@@ -98,17 +98,20 @@ None visible. While config loads, `useSocket` reports `connecting`, so `Connecti
 Tests sit next to the code (`bun test`).
 
 **Happy path**
+
 - `apps/backend/config.test.ts`: defaults; custom host and port; `0` allowed (AC-1, AC-2, AC-5)
 - `apps/backend/server.test.ts`: `startServer` on `127.0.0.1:0` with a stub `onConnection` resolves with a real port, a `ws` client connects and the stub is called, and `close()` frees the port (AC-5)
 - `apps/frontend/src/lib/socketConfig.test.ts`: a window global wins without calling `fetch`; the fetch path returns `wsUrl` (AC-7)
 
 **Edge cases**
+
 - `config.test.ts`: every invalid value in edge case 3 throws an error naming `AGGCODE_PORT` (AC-3)
 - `server.test.ts`: start two servers on the same fixed port; the second rejects with the in-use error (AC-4)
 - `socketConfig.test.ts`: network error, 500, HTML body and `{}` all reject (AC-8)
 - Frontend server route logic pulled into a pure `buildConfigResponse(env)` and tested for `AGGCODE_BACKEND_URL` precedence and the `AGGCODE_PORT=0` error (edge case 4)
 
 **Manual, against the running app**
+
 - `netstat -ano | findstr :3000` shows `127.0.0.1:3000`, not `0.0.0.0:3000` or `[::]:3000` (AC-1)
 - Start with `AGGCODE_PORT=4100` on both processes; the UI connects and creates a workspace (AC-2)
 - Stop the frontend server's config route (or break the URL); the UI leaves the connecting shell and shows the disconnected text (AC-8)

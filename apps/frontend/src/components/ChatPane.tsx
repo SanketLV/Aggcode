@@ -215,7 +215,9 @@ export function ChatPane() {
     <main className="flex min-w-0 flex-1 flex-col">
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
         <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
-          <h2 className="max-w-xl min-w-0 truncate text-title font-semibold">{title}</h2>
+          <h2 className="max-w-xl min-w-0 truncate text-title font-semibold">
+            {title}
+          </h2>
           <span className="shrink-0 text-xs text-muted-foreground">
             {active.workspace.name}
           </span>
@@ -464,8 +466,11 @@ export function ChatPane() {
           </div>
 
           <p
+            role="status"
             className={`mt-2 px-1 text-xs ${
-              hint.tone === "warning" ? "text-warning" : "text-subtle-foreground"
+              hint.tone === "warning"
+                ? "text-warning"
+                : "text-subtle-foreground"
             }`}
           >
             {hint.text}

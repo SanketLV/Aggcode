@@ -2,14 +2,14 @@
 
 The source of the "Aggcode Redesign" canvas: https://claude.ai/artifact/68Nq3dbGHAu35L8X4wDtUW
 
-| File | What it shows |
-| --- | --- |
-| `Main.dc.html` | Session transcript: sidebar, tool rows, code block, composer |
-| `EmptySession.dc.html` | New session with example prompts |
-| `Components.dc.html` | Token swatches, type scale, buttons, badges, shapes, tool row and composer states |
-| `Sidebar.dc.html` | The sidebar, imported by the two screens |
-| `canvas.json` | Artboard layout of the canvas |
-| `before/`, `after/` | Screenshots of the UI before and after the redesign |
+| File                   | What it shows                                                                     |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `Main.dc.html`         | Session transcript: sidebar, tool rows, code block, composer                      |
+| `EmptySession.dc.html` | New session with example prompts                                                  |
+| `Components.dc.html`   | Token swatches, type scale, buttons, badges, shapes, tool row and composer states |
+| `Sidebar.dc.html`      | The sidebar, imported by the two screens                                          |
+| `canvas.json`          | Artboard layout of the canvas                                                     |
+| `before/`, `after/`    | Screenshots of the UI before and after the redesign                               |
 
 The rules behind these screens are in `../DESIGN.md`. When the two disagree, `DESIGN.md` wins.
 

@@ -4,8 +4,7 @@ import type { ToolPart } from "../types";
 import { ToolRow } from "./ToolRow";
 
 type Block =
-  | { kind: "text"; text: string }
-  | { kind: "tools"; tools: ToolPart[] };
+  { kind: "text"; text: string } | { kind: "tools"; tools: ToolPart[] };
 
 // A burst of tool calls reads as one step, so consecutive tool parts share a
 // tighter group instead of the gap that separates prose from tools.

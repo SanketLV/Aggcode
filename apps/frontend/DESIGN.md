@@ -22,51 +22,51 @@ Neutrals are tinted cool (hue 265, chroma ≤ 0.012) instead of the pure grey (`
 
 ### Surfaces (darkest → lightest)
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--background` | `oklch(0.16 0.006 265)` | App ground, transcript pane |
-| `--sidebar` / `--card` | `oklch(0.185 0.007 265)` | Sidebar, tool rows, cards |
-| `--popover` | `oklch(0.21 0.008 265)` | Menus, selects, dialogs |
-| `--muted` | `oklch(0.235 0.009 265)` | Skeletons, code-ish chips, user bubble |
-| `--accent` | `oklch(0.26 0.01 265)` | Hover and selected **surfaces** (not the brand accent, see note) |
+| Token                  | Value                    | Use                                                              |
+| ---------------------- | ------------------------ | ---------------------------------------------------------------- |
+| `--background`         | `oklch(0.16 0.006 265)`  | App ground, transcript pane                                      |
+| `--sidebar` / `--card` | `oklch(0.185 0.007 265)` | Sidebar, tool rows, cards                                        |
+| `--popover`            | `oklch(0.21 0.008 265)`  | Menus, selects, dialogs                                          |
+| `--muted`              | `oklch(0.235 0.009 265)` | Skeletons, code-ish chips, user bubble                           |
+| `--accent`             | `oklch(0.26 0.01 265)`   | Hover and selected **surfaces** (not the brand accent, see note) |
 
 > Naming note: shadcn calls the hover surface `accent`. Our brand colour is `primary`. Don't confuse them: `bg-accent` is grey.
 
 ### Text
 
-| Token | Value | Contrast on `--background` | Use |
-| --- | --- | --- | --- |
-| `--foreground` | `oklch(0.96 0.004 265)` | ~16:1 | Body text, transcript |
-| `--muted-foreground` | `oklch(0.71 0.012 265)` | ~7.5:1 | Secondary labels, paths, meta |
-| `--subtle-foreground` | `oklch(0.60 0.012 265)` | ~4.9:1 | Tertiary only: timestamps, counters, placeholder |
+| Token                 | Value                   | Contrast on `--background` | Use                                              |
+| --------------------- | ----------------------- | -------------------------- | ------------------------------------------------ |
+| `--foreground`        | `oklch(0.96 0.004 265)` | ~16:1                      | Body text, transcript                            |
+| `--muted-foreground`  | `oklch(0.71 0.012 265)` | ~7.5:1                     | Secondary labels, paths, meta                    |
+| `--subtle-foreground` | `oklch(0.60 0.012 265)` | ~4.9:1                     | Tertiary only: timestamps, counters, placeholder |
 
 Nothing below `--subtle-foreground` is allowed for text. It is the 4.5:1 floor.
 
 ### Lines
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--border` | `oklch(1 0 0 / 7%)` | Default dividers, panel edges |
+| Token             | Value                | Use                               |
+| ----------------- | -------------------- | --------------------------------- |
+| `--border`        | `oklch(1 0 0 / 7%)`  | Default dividers, panel edges     |
 | `--border-strong` | `oklch(1 0 0 / 13%)` | Composer, dialogs, hovered inputs |
-| `--input` | `oklch(1 0 0 / 11%)` | Input borders |
+| `--input`         | `oklch(1 0 0 / 11%)` | Input borders                     |
 
 ### Brand accent
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--primary` | `oklch(0.78 0.1 225)` | Send button, submit buttons, active-item marker, focus ring |
-| `--primary-foreground` | `oklch(0.2 0.03 225)` | Text/icons on `--primary` |
-| `--ring` | `oklch(0.78 0.1 225 / 70%)` | Focus outline |
+| Token                  | Value                       | Use                                                         |
+| ---------------------- | --------------------------- | ----------------------------------------------------------- |
+| `--primary`            | `oklch(0.78 0.1 225)`       | Send button, submit buttons, active-item marker, focus ring |
+| `--primary-foreground` | `oklch(0.2 0.03 225)`       | Text/icons on `--primary`                                   |
+| `--ring`               | `oklch(0.78 0.1 225 / 70%)` | Focus outline                                               |
 
 "Glacier" is a desaturated cyan-blue, chosen because it doesn't collide with any of the status hues (green 160, amber 85, red 25) and isn't the purple "AI gradient" hue. To re-brand, change the hue in these three lines and nothing else.
 
 ### Status
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `--success` | `oklch(0.77 0.14 160)` | Signed in, tool finished |
-| `--warning` | `oklch(0.83 0.14 85)` | Needs sign-in, attention |
-| `--destructive` | `oklch(0.7 0.18 25)` | Errors, delete |
+| Token           | Value                  | Use                      |
+| --------------- | ---------------------- | ------------------------ |
+| `--success`     | `oklch(0.77 0.14 160)` | Signed in, tool finished |
+| `--warning`     | `oklch(0.83 0.14 85)`  | Needs sign-in, attention |
+| `--destructive` | `oklch(0.7 0.18 25)`   | Errors, delete           |
 
 Status recipe: `bg-{status}/10 text-{status} border-{status}/25`, always with an icon or a word.
 
@@ -86,14 +86,14 @@ Status recipe: `bg-{status}/10 text-{status} border-{status}/25`, always with an
 
 **Scale** (dense app UI, 14px body). These are defined as `--text-*` in `@theme`, so they become Tailwind classes:
 
-| Class | Size / line-height | Weight | Use |
-| --- | --- | --- | --- |
-| `text-display` | 20px / 1.3, `-0.015em` | 600 | Empty-state headings only |
-| `text-title` | 15px / 1.4, `-0.01em` | 600 | Pane header, dialog titles |
-| `text-sm` | 14px / 1.6 | 400 | Transcript prose, user messages, composer |
-| `text-ui` | 13px / 1.4 | 400 / 500 | Sidebar rows, buttons, menu items |
-| `text-xs` | 12px / 1.45 | 400 | Helper text, meta, captions |
-| `text-micro` | 11px / 1.4 | 500 | Mono only: paths, tool rows, badges |
+| Class          | Size / line-height     | Weight    | Use                                       |
+| -------------- | ---------------------- | --------- | ----------------------------------------- |
+| `text-display` | 20px / 1.3, `-0.015em` | 600       | Empty-state headings only                 |
+| `text-title`   | 15px / 1.4, `-0.01em`  | 600       | Pane header, dialog titles                |
+| `text-sm`      | 14px / 1.6             | 400       | Transcript prose, user messages, composer |
+| `text-ui`      | 13px / 1.4             | 400 / 500 | Sidebar rows, buttons, menu items         |
+| `text-xs`      | 12px / 1.45            | 400       | Helper text, meta, captions               |
+| `text-micro`   | 11px / 1.4             | 500       | Mono only: paths, tool rows, badges       |
 
 Rules:
 
@@ -110,16 +110,16 @@ Rules:
 
 Tailwind's 4px scale, with these fixed values so panes line up:
 
-| Where | Value |
-| --- | --- |
-| Pane horizontal padding (header, transcript, composer) | `px-5` (20px) |
-| Sidebar padding | `p-2` list, `px-3` header/footer |
-| Row height: sidebar item | 32px (`h-8`) |
-| Row height: compact control (chips, selects in composer) | 28px (`h-7`) |
-| Row height: default control | 36px (`h-9`) |
-| Gap between transcript turns | `gap-6` |
-| Gap between parts in a turn | `gap-2` |
-| Transcript column and composer | `max-w-3xl` (768px) |
+| Where                                                    | Value                            |
+| -------------------------------------------------------- | -------------------------------- |
+| Pane horizontal padding (header, transcript, composer)   | `px-5` (20px)                    |
+| Sidebar padding                                          | `p-2` list, `px-3` header/footer |
+| Row height: sidebar item                                 | 32px (`h-8`)                     |
+| Row height: compact control (chips, selects in composer) | 28px (`h-7`)                     |
+| Row height: default control                              | 36px (`h-9`)                     |
+| Gap between transcript turns                             | `gap-6`                          |
+| Gap between parts in a turn                              | `gap-2`                          |
+| Transcript column and composer                           | `max-w-3xl` (768px)              |
 
 Header and composer share the same horizontal padding as the transcript, so the three edges align.
 
@@ -127,13 +127,13 @@ Header and composer share the same horizontal padding as the transcript, so the 
 
 ## Shape
 
-| Token | Value | Use |
-| --- | --- | --- |
-| `rounded-sm` | 4px | Badges, `kbd`, inline chips |
-| `rounded-md` | 6px | Every interactive control: buttons, inputs, selects, sidebar rows, tool rows |
-| `rounded-lg` | 8px | Panels, message bubbles, banners |
-| `rounded-xl` | 12px | Composer shell, dialogs |
-| `rounded-full` | — | **Dots only** (status dots, avatars). Never pills. |
+| Token          | Value | Use                                                                          |
+| -------------- | ----- | ---------------------------------------------------------------------------- |
+| `rounded-sm`   | 4px   | Badges, `kbd`, inline chips                                                  |
+| `rounded-md`   | 6px   | Every interactive control: buttons, inputs, selects, sidebar rows, tool rows |
+| `rounded-lg`   | 8px   | Panels, message bubbles, banners                                             |
+| `rounded-xl`   | 12px  | Composer shell, dialogs                                                      |
+| `rounded-full` | —     | **Dots only** (status dots, avatars). Never pills.                           |
 
 Inner radius = outer radius − padding, so a control inside the composer is `rounded-md` inside `rounded-xl`.
 
@@ -141,10 +141,10 @@ Inner radius = outer radius − padding, so a control inside the composer is `ro
 
 ## Elevation
 
-| Level | Surface | Shadow |
-| --- | --- | --- |
-| 0 | `bg-background` | none |
-| 1 | `bg-card` + `border-border` | none |
+| Level        | Surface                               | Shadow                                                          |
+| ------------ | ------------------------------------- | --------------------------------------------------------------- |
+| 0            | `bg-background`                       | none                                                            |
+| 1            | `bg-card` + `border-border`           | none                                                            |
 | 2 (floating) | `bg-popover` + `border-border-strong` | `--shadow-float`: `0 12px 32px -8px oklch(0.05 0.02 265 / 60%)` |
 
 The composer is level 1 with `border-border-strong`, plus a 1px top highlight (`shadow-[inset_0_1px_0_oklch(1_0_0/4%)]`) so it reads as the one raised thing on the transcript pane.
@@ -193,12 +193,12 @@ Build on `components/ui/*` (`Button`, `Input`, `Textarea`, `Select`, `Dialog`). 
 
 ### Button
 
-| Variant | Recipe | Use |
-| --- | --- | --- |
-| `default` | `bg-primary text-primary-foreground hover:bg-primary/90` | One per view: send, submit |
-| `secondary` | `bg-muted text-foreground hover:bg-accent` | Secondary actions |
-| `ghost` | `text-muted-foreground hover:bg-accent hover:text-foreground` | Toolbar and row actions |
-| `destructive` | `bg-destructive/12 text-destructive hover:bg-destructive/20` | Delete, sign out (tinted, not solid red) |
+| Variant       | Recipe                                                        | Use                                      |
+| ------------- | ------------------------------------------------------------- | ---------------------------------------- |
+| `default`     | `bg-primary text-primary-foreground hover:bg-primary/90`      | One per view: send, submit               |
+| `secondary`   | `bg-muted text-foreground hover:bg-accent`                    | Secondary actions                        |
+| `ghost`       | `text-muted-foreground hover:bg-accent hover:text-foreground` | Toolbar and row actions                  |
+| `destructive` | `bg-destructive/12 text-destructive hover:bg-destructive/20`  | Delete, sign out (tinted, not solid red) |
 
 Sizes: `sm` h-7, `default` h-9, `icon` size-8. All `rounded-md`, `text-ui font-medium`.
 
@@ -262,14 +262,14 @@ One shell, not a textarea with a control row floating above it:
 
 Every view designs all of these:
 
-| State | Pattern |
-| --- | --- |
-| Loading (connect) | `ConnectingShell` skeleton with `animate-pulse`, same geometry as the real layout |
-| Empty list | Icon `size-5 text-subtle-foreground` + one sentence + the action that fills it |
-| Empty session | Short heading + 3 example prompts as ghost buttons that fill the composer |
-| Running | `RunIndicator` (real state only) |
-| Error | Inline, next to the thing that failed, with a recovery action |
-| Offline | Composer disabled with the reason in the helper line, status dot in sidebar header turns `warning` |
+| State             | Pattern                                                                                            |
+| ----------------- | -------------------------------------------------------------------------------------------------- |
+| Loading (connect) | `ConnectingShell` skeleton with `animate-pulse`, same geometry as the real layout                  |
+| Empty list        | Icon `size-5 text-subtle-foreground` + one sentence + the action that fills it                     |
+| Empty session     | Short heading + 3 example prompts as ghost buttons that fill the composer                          |
+| Running           | `RunIndicator` (real state only)                                                                   |
+| Error             | Inline, next to the thing that failed, with a recovery action                                      |
+| Offline           | Composer disabled with the reason in the helper line, status dot in sidebar header turns `warning` |
 
 ---
 
@@ -359,9 +359,17 @@ Replaces the `:root` and `.dark` blocks. The light palette and the unused `chart
   body {
     @apply bg-background text-foreground font-sans antialiased;
   }
-  h1, h2, h3 { text-wrap: balance; }
-  p { text-wrap: pretty; }
-  ::selection { background: oklch(0.78 0.1 225 / 30%); }
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  ::selection {
+    background: oklch(0.78 0.1 225 / 30%);
+  }
 }
 ```
 
