@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import WebSocket from "ws";
+import WebSocket, { WebSocketServer } from "ws";
 import { startServer } from "./server";
 
 describe("startServer", () => {
@@ -64,5 +64,26 @@ describe("startServer", () => {
     } finally {
       await first.close();
     }
+  });
+
+  // `ws` forwards the underlying socket's 'error' events for the server's
+  // whole lifetime, not just while binding. A version that removed the
+  // error listener once `listening` fired left these later errors with no
+  // listener, which throws synchronously and crashes the whole process.
+  test("a runtime error after startup is logged, not thrown", async () => {
+    let capturedWss: WebSocketServer | undefined;
+    const server = await startServer({ host: "127.0.0.1", port: 0 }, (opts) => {
+      capturedWss = new WebSocketServer(opts);
+      return capturedWss;
+    });
+
+    expect(() => {
+      capturedWss!.emit(
+        "error",
+        Object.assign(new Error("EMFILE"), { code: "EMFILE" }),
+      );
+    }).not.toThrow();
+
+    await server.close();
   });
 });

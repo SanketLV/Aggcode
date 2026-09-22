@@ -28,17 +28,31 @@ export type RunningServer = {
  * caller (Electron, or index.ts) learns the real port when `port: 0` asks
  * the OS to pick one. Rejects with a typed ServerStartError instead of the
  * unhandled 'error' event ws emits by default.
+ *
+ * `createServer` is injectable so tests can grab a reference to the
+ * WebSocketServer and emit a runtime error on it directly.
  */
-export function startServer({
-  host,
-  port,
-  onConnection,
-}: StartServerOptions): Promise<RunningServer> {
+export function startServer(
+  { host, port, onConnection }: StartServerOptions,
+  createServer: (opts: { host: string; port: number }) => WebSocketServer = (
+    opts,
+  ) => new WebSocketServer(opts),
+): Promise<RunningServer> {
   return new Promise((resolve, reject) => {
-    const wss = new WebSocketServer({ host, port });
+    const wss = createServer({ host, port });
+    let started = false;
 
-    const onError = (err: NodeJS.ErrnoException) => {
-      wss.removeAllListeners();
+    // One listener for the server's whole lifetime: `ws` forwards the
+    // underlying socket's 'error' events for as long as the server exists,
+    // not just while binding. Removing this after `listening` (as an
+    // earlier version did) leaves later errors (e.g. EMFILE) with no
+    // listener, which throws synchronously and kills the whole process.
+    wss.on("error", (err: NodeJS.ErrnoException) => {
+      if (started) {
+        console.error("WebSocket server error:", err);
+        return;
+      }
+
       if (err.code === "EADDRINUSE") {
         reject(
           new ServerStartError(
@@ -56,12 +70,10 @@ export function startServer({
       } else {
         reject(new ServerStartError("other", err.message));
       }
-    };
-
-    wss.once("error", onError);
+    });
 
     wss.once("listening", () => {
-      wss.removeListener("error", onError);
+      started = true;
 
       const address = wss.address();
       const realPort =
