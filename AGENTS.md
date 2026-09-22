@@ -33,11 +33,11 @@ import { SessionModel, WorkspaceModel } from "db/client"; // NOT "db"
 
 ## Backend watch mode
 
-Uses `bun --watch`, **not** `bun --hot`. `--hot` re-evaluates in place and re-binds port 3000 → `EADDRINUSE` → silent failure. After any backend file changes, the browser must be refreshed (`useSocket` has no reconnect).
+Uses `bun --watch`, **not** `bun --hot`. `--hot` re-evaluates in place and re-binds the port → `startServer` (`server.ts`) rejects with a typed `ServerStartError`, exiting the process rather than the old silent `EADDRINUSE`. After any backend file changes, the browser must be refreshed (`useSocket` has no reconnect).
 
 ## Environment
 
-Backend needs `apps/backend/.env` with `DB_URL=<mongodb connection string>`. If it is missing, mongoose.connect rejects and the WebSocket server is never created — no visible error beyond a console log.
+Backend needs `apps/backend/.env` with `DB_URL=<mongodb connection string>`. If it is missing, mongoose.connect rejects and the process exits non-zero, logged. Optional `AGGCODE_HOST` (default `127.0.0.1`, loopback only) and `AGGCODE_PORT` (default `3000`, `0` = any free port) resolve via `config.ts`; the frontend server reads its own backend URL from `AGGCODE_BACKEND_URL` / `AGGCODE_PORT` (`apps/frontend/src/serverConfig.ts`) and serves it to the browser at `/api/config`. Details in `CLAUDE.md` under "Runtime config".
 
 Optional `AGGCODE_CREDENTIALS_KEY` (32 bytes, base64) encrypts API keys stored in Mongo. Unset, a key is created at `~/.aggcode/credentials.key`; losing it only means entering the API key again.
 

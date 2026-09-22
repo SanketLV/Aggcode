@@ -33,13 +33,23 @@ cd apps/backend && bun run dev            # bun --watch index.ts, WebSocket serv
 cd apps/frontend && bun run dev           # Bun.serve + React HMR on :3001
 ```
 
-**The backend uses `bun --watch`, not `bun --hot`.** `--watch` restarts the whole process on any change to `index.ts`, `User.ts`, `UserManager.ts`, or the `commons`/`db` packages (they are symlinked raw `.ts`, so edits there restart it too). `--hot` would re-evaluate the module in place and re-run `new WebSocketServer({port: 3000})` against a port the same process still holds, so the second bind emits an unhandled `EADDRINUSE` and the server silently stops accepting connections. Preserving the server across hot reloads would mean stashing it on `globalThis`, which is not worth it while the connection handler is three lines.
+**The backend uses `bun --watch`, not `bun --hot`.** `--watch` restarts the whole process on any change to `index.ts`, `User.ts`, `UserManager.ts`, `server.ts`, `config.ts`, or the `commons`/`db` packages (they are symlinked raw `.ts`, so edits there restart it too). `--hot` would re-evaluate the module in place and re-run `startServer` against a port the same process still holds; `startServer` now rejects that with a typed `ServerStartError` instead of the unhandled `EADDRINUSE` the old inline `new WebSocketServer({port: 3000})` produced, but the process still exits rather than serving. Preserving the server across hot reloads would mean stashing it on `globalThis`, which is not worth it while the connection handler is three lines.
 
 A restart drops every open socket, and `useSocket` has no reconnect — so after the backend reloads, the browser needs a refresh. An in-flight agent run also dies with the process; the user message is already persisted (see "Persist before sending"), the assistant reply is not.
 
-The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string>` (see `.env.example`). `mongoose.connect` is the outer promise in `index.ts` — if it rejects, the WebSocket server is never created and the only output is a logged error.
+The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string>` (see `.env.example`). `mongoose.connect` runs in `index.ts` after config is resolved — if it rejects, the WebSocket server is never created and the process exits non-zero with the error logged.
 
-Tests use `bun test` (no extra dependency). A package joins `bun run test` by adding `"test": "bun test"` to its `package.json`; the turbo `test` task picks it up. All three packages that have logic are in: `packages/commons` (the zod wire schemas), `apps/backend` (`providers/*.test.ts`) and `apps/frontend` (`src/lib/*.test.ts`). `User.ts` itself is still untested because it needs Mongo, so logic worth testing is pulled out into pure functions first (`providers/authScope.ts`, `lib/composer.ts`) and the handler just calls them. `providers/index.test.ts` mocks `child_process` with `mock.module`; spread the real module into the mock or unrelated imports that need `execFile` fail to load.
+### Runtime config
+
+The backend and the frontend server used to have their addresses hardcoded (`ws://localhost:3000`, port `3000`, port `3001`). They're now resolved from environment variables, each with a pure resolver function so the rules are unit-tested without starting a process:
+
+- **Backend** (`apps/backend/config.ts`, `resolveServerConfig`): `AGGCODE_HOST` (default `127.0.0.1`, loopback only — no auth yet, so anything else is a deliberate, warned-about choice) and `AGGCODE_PORT` (default `3000`; `0` asks the OS for any free port). `apps/backend/server.ts`'s `startServer({host, port, onConnection})` binds and resolves `{port, close}` once actually listening, or rejects with a typed `ServerStartError` (`kind: "in-use" | "denied" | "other"`) — `index.ts` turns that into a logged message and a non-zero exit, never a silent hang.
+- **Frontend server** (`apps/frontend/src/serverConfig.ts`): `buildSocketConfig(env)` returns `{wsUrl}` for the `/api/config` route the browser fetches — `AGGCODE_BACKEND_URL` (a full `ws://`/`wss://` URL) wins outright if set, else it's built from `AGGCODE_PORT` (default `3000`; `0` is rejected here, since this process has no way to know which port the backend's OS actually picked). `resolveWebPort(env)` reads `AGGCODE_WEB_PORT` (default `3001`) for the frontend server's own port.
+- **Browser** (`apps/frontend/src/lib/socketConfig.ts`): `loadSocketConfig()` prefers `window.__AGGCODE_CONFIG__` (set by Electron's preload script once that exists) and only falls back to fetching `/api/config` when it's absent; either path is validated with `parseSocketConfig` before `useSocket` trusts it. Any failure — network error, non-200, non-JSON, wrong shape — leaves `useSocket` in `closed` rather than stuck `connecting`.
+
+The default is always `127.0.0.1`, never `localhost`: on Windows, `localhost` can resolve to `::1` first, and the server only binds the IPv4 loopback address.
+
+Tests use `bun test` (no extra dependency). A package joins `bun run test` by adding `"test": "bun test"` to its `package.json`; the turbo `test` task picks it up. All three packages that have logic are in: `packages/commons` (the zod wire schemas, `config.ts`'s `parsePort`), `apps/backend` (`providers/*.test.ts`, `config.test.ts`, `server.test.ts`) and `apps/frontend` (`src/lib/*.test.ts`, `src/serverConfig.test.ts`). `User.ts` itself is still untested because it needs Mongo, so logic worth testing is pulled out into pure functions first (`providers/authScope.ts`, `lib/composer.ts`, `config.ts`) and the handler just calls them. `providers/index.test.ts` mocks `child_process` with `mock.module`; spread the real module into the mock or unrelated imports that need `execFile` fail to load.
 
 ## Workflow
 
@@ -47,7 +57,7 @@ One main system, plus three project skills in `.claude/skills/` (`before-and-aft
 
 1. **Spec** — `/spartan:spec`. Write the acceptance criteria as numbered lines (`AC-1`, `AC-2`, …). The same numbers carry through: each AC gets a test in step 2, a check in step 4, and a line in the PR body.
 2. **Build, test first** — `bun test` next to the code (`foo.ts` → `foo.test.ts`). If a wire message changes, a schema test in `packages/commons` comes first, because the four-place rule under "The wire protocol" is where changes break.
-3. **Prove UI changes** — `before-and-after`. Capture the "before" image _before_ you edit, since both apps use hardcoded ports (`:3000`, `:3001`) and cannot run twice side by side. Then pass the two image paths. **Do not use the default upload**: it posts to 0x0.st, which is public. Keep the images local or use `IMAGE_ADAPTER=gist`.
+3. **Prove UI changes** — `before-and-after`. Capture the "before" image _before_ you edit, since both apps default to fixed ports (`:3000`, `:3001`, overridable with `AGGCODE_PORT` / `AGGCODE_WEB_PORT`, see "Runtime config" below) and normally aren't run twice side by side. Then pass the two image paths. **Do not use the default upload**: it posts to 0x0.st, which is public. Keep the images local or use `IMAGE_ADAPTER=gist`.
 4. **Check** — `bun run test`, `bun run build`, then `/code-review`. Go through the ACs one by one against the running app, not the diff.
 5. **Ship** — run `unslop` over the commit message and PR body, then `/spartan:pr-ready`. Feature branches come off `dev`; `main` is production.
 6. **Sync** — `/sync` after merge. It only maintains `AGENTS.md` (it treats `CLAUDE.md` as a pointer and never writes into it), so bring this file up to date by hand in the same change. Most of the durable rules live here.
@@ -83,7 +93,7 @@ Dependencies are declared as `"commons": "*"` / `"db": "*"` in each consuming `p
 
 ### Backend (`apps/backend`)
 
-- `index.ts` — connects mongoose, then opens a bare `ws` `WebSocketServer` on port 3000.
+- `index.ts` — resolves the server config, connects mongoose, then calls `startServer` (`server.ts`). A bad `AGGCODE_PORT` or a port already in use exits the process with a message instead of connecting Mongo first or hanging silently. See "Runtime config" below.
 - `UserManager.ts` — singleton (`getInstance()`) holding the connected `User[]`. On connect it assigns a uuid, wires `message`/`close`, **then** sends the `init` snapshot (all workspaces with their sessions nested, joined in memory by comparing `ObjectId.toString()`), and removes the user on close. Listeners go on before the snapshot query so nothing sent during it is dropped. All incoming-message errors are caught and logged here, never sent back to the client.
 - `User.ts` — one instance per socket. `handleIncomingMessage` validates with the zod schema for that `type`, does the mongo write, and **returns** the outgoing message; `UserManager` sends it. Throws on unknown type or failed validation.
 
@@ -93,7 +103,7 @@ There is no auth, no user identity beyond the per-connection uuid, and no broadc
 
 Not Next.js. `src/index.ts` is a `Bun.serve` that serves `src/index.html` for `/*` (HTML imports are bundled by Bun; `frontend.tsx` mounts React 19 with `import.meta.hot` root reuse). `build.ts` produces a static `dist/` via `Bun.build` over `src/**/*.html`.
 
-- `hooks/useSocket.ts` — opens `ws://localhost:3000`. **The URL is hardcoded**; there is no env config for it. Returns `{socket, status, loading}` and does not auto-reconnect: a dropped connection needs a page reload.
+- `hooks/useSocket.ts` — resolves the backend URL via `lib/socketConfig.ts`'s `loadSocketConfig()` before opening the socket (window `__AGGCODE_CONFIG__` first, else a fetch to `/api/config`), then connects. Returns `{socket, status, loading}` and does not auto-reconnect: a dropped connection needs a page reload. See "Runtime config" below.
 - `context/AppContext.tsx` — owns all state (`workspaces`, `activeSessionId`, `openWorkspaceId`, run state, provider auth) and the single `socket.onmessage` switch, and provides it through `useApp()`. `App.tsx` only lays out the components. Components send through the `send(socket, message)` helper in `lib/helpers.ts`, which is typed to `IncomingMessageType`, no-ops unless the socket is `OPEN`, and returns whether it sent.
 - Tailwind v4 through `bun-plugin-tailwind` (wired in `bunfig.toml` for dev and `build.ts` for prod). **There is no `tailwind.config`** — theme lives in CSS (`src/index.css`, `styles/globals.css`).
 - shadcn/ui, `new-york` style, `neutral` base, lucide icons (`components.json`). Components land in `src/components/ui/`. Path alias `@/*` → `./src/*`.
