@@ -68,7 +68,7 @@ apps/frontend (Bun.serve :3001)  ──WebSocket──▶  apps/backend (ws :300
 - `incoming.ts` — zod schemas + `IncomingMessageType`, a discriminated union on `type`: `create-workspace`, `create-session`, `add-message`, `update-session-config`, `delete-workspace`, `delete-session`, `provider-login`, `provider-logout`, `get-provider-auth`.
 - `outgoing.ts` — `OutgoingMessageType`: `workspace-created`, `session-created`, `message-added`, `init`, `session-config-updated`, the `assistant-*` run frames, `workspace-deleted`, `session-deleted`, and the provider-auth frames `provider-auth-updated`, `provider-auth-result`, `provider-catalog-updated`. Also the domain types `Workspace`, `Session`, `Message` and the auth types `ProviderAuthStatus` / `ProviderDescriptor` shared by both sides.
 
-Adding or changing a message means touching **four** places: the schema/union in `commons`, the `if (msg.type === ...)` chain in `apps/backend/User.ts`, the `socket.onmessage` handler in `apps/frontend/src/App.tsx`, and the mongoose schema in `packages/db/index.ts` if it persists.
+Adding or changing a message means touching **four** places: the schema/union in `commons`, the `if (msg.type === ...)` chain in `apps/backend/User.ts`, the `socket.onmessage` handler in `apps/frontend/src/context/AppContext.tsx`, and the mongoose schema in `packages/db/index.ts` if it persists.
 
 ### Workspace-scoped subpath imports
 
@@ -94,7 +94,7 @@ There is no auth, no user identity beyond the per-connection uuid, and no broadc
 Not Next.js. `src/index.ts` is a `Bun.serve` that serves `src/index.html` for `/*` (HTML imports are bundled by Bun; `frontend.tsx` mounts React 19 with `import.meta.hot` root reuse). `build.ts` produces a static `dist/` via `Bun.build` over `src/**/*.html`.
 
 - `hooks/useSocket.ts` — opens `ws://localhost:3000`. **The URL is hardcoded**; there is no env config for it. Returns `{socket, status, loading}` and does not auto-reconnect: a dropped connection needs a page reload.
-- `App.tsx` — owns all state (`workspaces`, `activeSessionId`, `openWorkspaceId`) and the single `onmessage` switch, then provides it through `context/AppContext.tsx`. Child components send through the module-level `send(socket, message)` helper, which is typed to `IncomingMessageType` and no-ops unless the socket is `OPEN`.
+- `context/AppContext.tsx` — owns all state (`workspaces`, `activeSessionId`, `openWorkspaceId`, run state, provider auth) and the single `socket.onmessage` switch, and provides it through `useApp()`. `App.tsx` only lays out the components. Components send through the `send(socket, message)` helper in `lib/helpers.ts`, which is typed to `IncomingMessageType`, no-ops unless the socket is `OPEN`, and returns whether it sent.
 - Tailwind v4 through `bun-plugin-tailwind` (wired in `bunfig.toml` for dev and `build.ts` for prod). **There is no `tailwind.config`** — theme lives in CSS (`src/index.css`, `styles/globals.css`).
 - shadcn/ui, `new-york` style, `neutral` base, lucide icons (`components.json`). Components land in `src/components/ui/`. Path alias `@/*` → `./src/*`.
 - `/api/hello` routes in `src/index.ts` are leftover template scaffolding, unused.
@@ -165,19 +165,23 @@ Each provider may carry an `auth` plugin (`AuthProviderPlugin` in `types.ts`): i
 - **Claude model ids are verified, not guessed.** `CLAUDE_CATALOG` in `providers/index.ts` lists ids confirmed with a real SDK run; `claude-3-7-sonnet` and `claude-3-5-*` were rejected as unknown models. `resolveModel` swaps an off-catalog id saved on an old session for the default, and `ChatPane` shows the default for it too.
 - **A login or logout that throws is reported** as a failed `provider-auth-result`, and the client times the request out after 30s, so the modal spinner cannot hang.
 
-## UI conventions (apps/frontend/src/App.tsx)
+## UI conventions (apps/frontend/src)
 
-Everything lives in `App.tsx` (`App` / `ConnectingShell` / `Sidebar` / `ChatPane`) by deliberate choice. Keep it that way until the file genuinely needs splitting.
+**`apps/frontend/DESIGN.md` is the design system** (tokens, type scale, shape, component recipes, copy rules, review checklist). Read it before any UI change.
+
+`App.tsx` is now only the layout: it picks `ConnectingShell` while loading, then renders `Sidebar`, `ChatPane` and `ProviderAuthModal`. Each piece has its own file in `src/components/` (plus `AssistantTurn`, `ToolRow`, `RunIndicator`, `Elapsed`, `ToolIcon`, `ConfirmModal`). All state lives in `context/AppContext.tsx`, pure helpers in `lib/`. Add a component file when a piece has its own state or is reused; keep one-off markup in the component that renders it.
 
 - **Dark mode is locked**, not toggled: `class="dark"` sits on `<html>` in `src/index.html` alongside `<meta name="color-scheme" content="dark">`. There is no light palette in use and no theme switcher.
-- **Only semantic tokens.** Use `bg-background`, `bg-card`, `bg-muted`, `bg-primary`/`text-primary-foreground`, `bg-accent`/`text-accent-foreground`, `text-muted-foreground`, `border-border`, `border-input`, `ring-ring`, and for status `success` / `warning` (`bg-success/10 text-success`, defined in `globals.css` for both themes). Never raw palette classes like `bg-zinc-900`, or the page drifts off the shadcn token set in `styles/globals.css`.
-- **Shape rule:** interactive controls are `rounded-md`, panels and message bubbles are `rounded-lg`.
+- **Only semantic tokens.** Use `bg-background`, `bg-card`, `bg-muted`, `bg-primary`/`text-primary-foreground`, `bg-accent`/`text-accent-foreground`, `text-muted-foreground`, `border-border`, `border-input`, `ring-ring`, and for status `success` / `warning` (`bg-success/10 text-success`), plus `text-subtle-foreground` for tertiary text and `border-border-strong` for the composer and dialogs. Never raw palette classes like `bg-zinc-900`, or the page drifts off the shadcn token set in `styles/globals.css`.
+- **Shape rule:** interactive controls are `rounded-md`, panels and message bubbles are `rounded-lg`, the composer shell and dialogs are `rounded-xl`, badges `rounded-sm`. `rounded-full` is for dots only.
+- **Focus:** every interactive element uses the `focus-ring` utility from `globals.css`, not a hand-written `focus-visible:ring-*` string.
+- **Custom text sizes** (`text-micro`, `text-ui`, `text-title`, `text-display`) must be registered in `lib/utils.ts`, or `cn()`'s tailwind-merge treats them as colours and drops them. That shipped once: every primitive lost its size.
 - **Icons:** lucide-react only, `strokeWidth={1.5}` via the `ICON_STROKE` constant.
 - **Motion:** colour transitions and one chevron rotation, all with a `motion-reduce:transition-none` companion. No animation library.
 - The shell is `h-dvh` with `min-h-0 flex-1 overflow-y-auto` on the two scroll panes, so the sidebar and the transcript scroll independently instead of the page growing.
 - Every list has a real empty state, and `status !== "open"` disables both composers and shows why.
 - **Markdown comes from Streamdown**, not `react-markdown`: it tolerates the unterminated chunks that token-level streaming produces. It needs three things wired together, and silently renders unstyled if any is missing: the `streamdown` dep, `import "streamdown/styles.css"` in `App.tsx`, and the `@source "../node_modules/streamdown/dist/*.js"` directive in `styles/globals.css` so Tailwind scans its bundle for utility classes. It reuses the shadcn CSS custom properties already defined there.
-- **Assistant turns are unbubbled and full column width** (`AssistantTurn` / `partsOf`); only user turns keep a bubble. A coding transcript is mostly code, and a bubble plus an 80% cap fights that. The column is `max-w-4xl` with `gap-6` between turns, spacing rather than borders doing the separating.
+- **Assistant turns are unbubbled and full column width** (`AssistantTurn` / `partsOf`); only user turns keep a bubble. A coding transcript is mostly code, and a bubble plus an 80% cap fights that. The column is `max-w-3xl` with `gap-6` between turns, spacing rather than borders doing the separating.
 - **Prose measure is handled in CSS, not Tailwind:** `.transcript-prose :where(p, ul, ol, h1-h6, blockquote) { max-width: 70ch }` in `globals.css`. This is deliberately asymmetric — text stays readable while `pre` and `table` use the full width. Streamdown renders prose and code in one tree, so capping the container would cap code too.
 - **Tool rows are accordions** (`ToolRow`), collapsed by default but auto-expanded while `status === "running"` and auto-collapsed once settled. The pattern is `override ?? part.status === "running"` with `override` as per-row local state, so an explicit click wins from then on. Keyed by React position, not `toolId`, because legacy rows all share an empty id.
 - **`RunIndicator` reports real state,** not a generic label: the running tool if there is one, else the live thinking-token count, plus elapsed seconds. `Elapsed` is its own component so only it re-renders each second. Deliberately no rotating verb and no "esc to interrupt" hint: `Query.interrupt()` only works in streaming-input mode, which this does not use, so the hint would be a lie.

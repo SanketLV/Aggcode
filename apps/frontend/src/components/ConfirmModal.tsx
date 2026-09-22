@@ -13,6 +13,8 @@ interface ConfirmModalProps {
   onOpenChange: (open: boolean) => void;
   title: string;
   message: string;
+  /** Repeats the action, e.g. "Delete workspace", so the button stands alone. */
+  confirmLabel: string;
   onConfirm: () => void;
   variant?: "destructive" | "default";
 }
@@ -22,6 +24,7 @@ export function ConfirmModal({
   onOpenChange,
   title,
   message,
+  confirmLabel,
   onConfirm,
   variant = "destructive",
 }: ConfirmModalProps) {
@@ -32,8 +35,8 @@ export function ConfirmModal({
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{message}</DialogDescription>
         </DialogHeader>
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+        <DialogFooter className="gap-2">
+          <Button variant="secondary" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
           <Button
@@ -43,7 +46,7 @@ export function ConfirmModal({
               onOpenChange(false);
             }}
           >
-            Delete
+            {confirmLabel}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Design system sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#0e0f13}
+a{color:#74c0e0}a:hover{color:#a9d4ea}
+@keyframes dcspin{to{transform:rotate(360deg)}}
+.spin{animation:dcspin 1s linear infinite}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}}
+</style>
+</helmet>
+<div style="width: 1280px; height: 2160px; box-sizing: border-box; padding: 56px 64px; display: flex; flex-direction: column; gap: 56px; background: #0e0f13; color: #f1f2f5; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif;">
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<h1 style="margin: 0; font-size: 28px; font-weight: 600; letter-spacing: -0.02em;">Aggcode design system</h1>
+<p style="margin: 0; font-size: 14px; line-height: 1.6; color: #9fa2ad;">Tokens and component recipes from <span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 12.5px; color: #d5d7dd;">apps/frontend/DESIGN.md</span>. Hex values approximate the OKLCH tokens.</p>
+</div>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Colour</h2>
+<div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 24px 16px;">
+<sc-for list="{{swatches}}" as="sw" hint-placeholder-count="15">
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<div style="{{sw.tile}}"></div>
+<div style="display: flex; flex-direction: column; gap: 3px;">
+<span style="font-size: 13px; font-weight: 500;">{{sw.label}}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #9fa2ad;">{{sw.token}}</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">{{sw.hex}}</span>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 8px;">
+<h2 style="margin: 0 0 12px; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Type</h2>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="flex-grow: 1; font-size: 20px; font-weight: 600; letter-spacing: -0.015em; line-height: 1.3;">What should we change in aggcode?</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-display · 20 / 1.3 · 600</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="flex-grow: 1; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.4;">Fix reconnect in useSocket</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-title · 15 / 1.4 · 600</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="flex-grow: 1; font-size: 14px; line-height: 1.6;">The socket is created once in an effect with no dependencies, so a close event has nowhere to go.</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-sm · 14 / 1.6 · 400</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="flex-grow: 1; font-size: 13px; font-weight: 500; line-height: 1.4;">New session · Add workspace · Sign in</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-ui · 13 / 1.4 · 400–500</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0; border-bottom: 1px solid rgba(255,255,255,0.07);">
+<span style="flex-grow: 1; font-size: 12px; line-height: 1.45; color: #9fa2ad;">Enter to send · Shift+Enter for a new line</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-xs · 12 / 1.45 · 400</span>
+</div>
+<div style="display: flex; align-items: baseline; gap: 24px; padding: 14px 0;">
+<span style="flex-grow: 1; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; font-weight: 500; line-height: 1.4; color: #9fa2ad;">apps/frontend/src/hooks/useSocket.ts</span>
+<span style="font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; color: #83868f;">text-micro · 11 / 1.4 · 500 · mono only</span>
+</div>
+</section>
+
+<section style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px;">
+<div style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Buttons and status</h2>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">Connect</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #1e1f26; color: #f1f2f5; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">Cancel</button>
+<button type="button" style="height: 32px; padding: 0 12px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">New session</button>
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: rgba(236,111,99,0.12); color: #ec6f63; font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer;">Delete workspace</button>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+<button type="button" style="height: 32px; padding: 0 14px; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; font-family: inherit; font-size: 13px; font-weight: 500; outline: 2px solid rgba(116,192,224,0.7); outline-offset: 2px; cursor: pointer;">Focused</button>
+<span style="font-size: 12px; color: #83868f;">Focus ring: 2px ring, 2px offset, on every control</span>
+</div>
+<div style="display: flex; flex-wrap: wrap; align-items: center; gap: 8px;">
+<span style="height: 20px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; border: 1px solid rgba(82,204,152,0.25); background: rgba(82,204,152,0.1); color: #52cc98; font-size: 11px; font-weight: 500;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"></path></svg>Signed in</span>
+<span style="height: 20px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; border: 1px solid rgba(232,195,90,0.25); background: rgba(232,195,90,0.1); color: #e8c35a; font-size: 11px; font-weight: 500;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>Needs sign-in</span>
+<span style="height: 20px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; border-radius: 4px; border: 1px solid rgba(236,111,99,0.25); background: rgba(236,111,99,0.1); color: #ec6f63; font-size: 11px; font-weight: 500;"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>Failed</span>
+</div>
+</div>
+<div style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Shape</h2>
+<div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px;">
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="height: 72px; border-radius: 4px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.13);"></div><span style="font-size: 13px; font-weight: 500;">4px · sm</span><span style="font-size: 12px; color: #9fa2ad;">Badges, kbd, inline code</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="height: 72px; border-radius: 6px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.13);"></div><span style="font-size: 13px; font-weight: 500;">6px · md</span><span style="font-size: 12px; color: #9fa2ad;">Every control, tool rows</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="height: 72px; border-radius: 8px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.13);"></div><span style="font-size: 13px; font-weight: 500;">8px · lg</span><span style="font-size: 12px; color: #9fa2ad;">Panels, bubbles, code</span></div>
+<div style="display: flex; flex-direction: column; gap: 8px;"><div style="height: 72px; border-radius: 12px; background: #1e1f26; border: 1px solid rgba(255,255,255,0.13);"></div><span style="font-size: 13px; font-weight: 500;">12px · xl</span><span style="font-size: 12px; color: #9fa2ad;">Composer, dialogs</span></div>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Tool rows</h2>
+<div style="max-width: 768px; display: flex; flex-direction: column; gap: 4px;">
+<div style="border: 1px solid rgba(255,255,255,0.13); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="true" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.5 22H18a2 2 0 0 0 2-2V7l-5-5H6a2 2 0 0 0-2 2v9.5"></path><path d="M14 2v4a2 2 0 0 0 2 2h4"></path><path d="M13.378 15.626a1 1 0 1 0-3.004-3.004l-5.01 5.012a2 2 0 0 0-.506.854l-.837 2.87a.5.5 0 0 0 .62.62l2.87-.837a2 2 0 0 0 .854-.506z"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Edit</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">apps/frontend/src/components/ChatPane.tsx</span>
+<span style="color: #83868f;">running</span>
+<svg class="spin" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9fa2ad" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Running"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+</button>
+</div>
+<div style="border: 1px solid rgba(255,255,255,0.07); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="true" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path></svg>
+<span style="color: #d5d7dd; font-weight: 500;">Grep</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">"bg-zinc|text-blue" in apps/frontend/src</span>
+<span style="color: #83868f;">0 matches</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#52cc98" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Done"><path d="M20 6 9 17l-5-5"></path></svg>
+</button>
+<p style="margin: 0; padding: 10px 12px; background: #0e0f13; border-top: 1px solid rgba(255,255,255,0.07); font-size: 11px; color: #9fa2ad;">This tool returned no output.</p>
+</div>
+<div style="border: 1px solid rgba(236,111,99,0.25); border-radius: 6px; background: #131419; overflow: hidden;">
+<button type="button" aria-expanded="true" style="width: 100%; height: 32px; padding: 0 10px; display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #9fa2ad; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; text-align: left; cursor: pointer;">
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#83868f" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m7 11 2-2-2-2"></path><path d="M11 13h4"></path><rect width="18" height="18" x="3" y="3" rx="2"></rect></svg>
+<span style="color: #ec6f63; font-weight: 500;">Bash</span>
+<span style="flex-grow: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;">bun run build</span>
+<span style="color: #ec6f63;">exit 1</span>
+<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ec6f63" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" role="img" aria-label="Failed"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg>
+</button>
+<pre style="margin: 0; padding: 10px 12px; background: #0e0f13; border-top: 1px solid rgba(255,255,255,0.07); font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px; line-height: 1.6; color: #9fa2ad; white-space: pre-wrap;">src/components/ChatPane.tsx:142:9 - <span style="color: #ec6f63;">error TS2322</span>: Type 'string | undefined' is not assignable to type 'string'.</pre>
+</div>
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Composer states</h2>
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: end;">
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #83868f;">Ready</span>
+<div style="border: 1px solid rgba(116,192,224,0.45); border-radius: 12px; background: #131419; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+<label for="c-ready" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Message</label>
+<textarea id="c-ready" rows="2" style="resize: none; border: 0; background: transparent; padding: 12px 14px 2px; font-family: inherit; font-size: 14px; line-height: 1.6; color: #f1f2f5; outline: none;">Add a reconnecting banner</textarea>
+<div style="display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px;">
+<button type="button" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 12px; cursor: pointer;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #52cc98;"></span>Claude</button>
+<button type="button" style="height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #9fa2ad; font-family: inherit; font-size: 12px; cursor: pointer;">Opus 5</button>
+<span style="flex-grow: 1;"></span>
+<button type="submit" aria-label="Send message" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; cursor: pointer;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
+</div>
+</div>
+<p style="margin: 0; padding: 0 4px; font-size: 12px; color: #83868f;">Enter to send · Shift+Enter for a new line</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #83868f;">Signed out</span>
+<div style="border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; background: #131419; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+<label for="c-out" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Message</label>
+<textarea id="c-out" rows="2" disabled="disabled" placeholder="Sign in to Claude to start chatting" style="resize: none; border: 0; background: transparent; padding: 12px 14px 2px; font-family: inherit; font-size: 14px; line-height: 1.6; color: #f1f2f5; outline: none;"></textarea>
+<div style="display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px;">
+<button type="button" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: rgba(232,195,90,0.1); color: #e8c35a; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #e8c35a;"></span>Claude · Sign in</button>
+<span style="flex-grow: 1;"></span>
+<button type="submit" aria-label="Send message" disabled="disabled" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; opacity: 0.4; cursor: not-allowed;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
+</div>
+</div>
+<p style="margin: 0; padding: 0 4px; font-size: 12px; color: #e8c35a;">Not signed in to Claude. Sign in to send messages.</p>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 8px;">
+<span style="font-size: 12px; font-weight: 500; color: #83868f;">Running</span>
+<div style="display: flex; align-items: center; gap: 8px; padding: 0 4px 4px; font-size: 12px; color: #9fa2ad;" aria-live="polite">
+<svg class="spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>
+<span style="flex-grow: 1; font-family: 'Geist Mono', ui-monospace, Consolas, monospace; font-size: 11px;">Edit ChatPane.tsx</span>
+<span style="font-variant-numeric: tabular-nums; color: #83868f;">0:08</span>
+</div>
+<div style="border: 1px solid rgba(255,255,255,0.13); border-radius: 12px; background: #131419; box-shadow: inset 0 1px 0 rgba(255,255,255,0.04); display: flex; flex-direction: column;">
+<label for="c-run" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;">Message</label>
+<textarea id="c-run" rows="2" disabled="disabled" placeholder="Claude is working on this session…" style="resize: none; border: 0; background: transparent; padding: 12px 14px 2px; font-family: inherit; font-size: 14px; line-height: 1.6; color: #f1f2f5; outline: none;"></textarea>
+<div style="display: flex; align-items: center; gap: 2px; padding: 6px 8px 8px;">
+<button type="button" disabled="disabled" style="height: 28px; padding: 0 8px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #83868f; font-family: inherit; font-size: 12px;"><span aria-hidden="true" style="width: 6px; height: 6px; border-radius: 50%; background: #52cc98;"></span>Claude</button>
+<button type="button" disabled="disabled" style="height: 28px; padding: 0 8px; border: 0; border-radius: 6px; background: transparent; color: #83868f; font-family: inherit; font-size: 12px;">Opus 5</button>
+<span style="flex-grow: 1;"></span>
+<button type="submit" aria-label="Send message" disabled="disabled" style="width: 32px; height: 32px; padding: 0; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 6px; background: #74c0e0; color: #0b2230; opacity: 0.4; cursor: not-allowed;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
+</div>
+</div>
+<p style="margin: 0; padding: 0 4px; font-size: 12px; color: #83868f;">One turn at a time per session.</p>
+</div>
+
+</div>
+</section>
+
+<section style="display: flex; flex-direction: column; gap: 20px;">
+<h2 style="margin: 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em;">Messages</h2>
+<div style="max-width: 768px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; justify-content: flex-end;">
+<div style="max-width: 80%; box-sizing: border-box; padding: 10px 14px; border-radius: 8px; background: #1e1f26; font-size: 14px; line-height: 1.6;">User turn: quiet muted bubble, right aligned. The assistant reply is unbubbled and full width.</div>
+</div>
+<div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(236,111,99,0.25); background: rgba(236,111,99,0.08); color: #ec6f63; font-size: 14px; line-height: 1.6;">
+<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 3px;"><circle cx="12" cy="12" r="10"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+<span style="flex-grow: 1;">The run stopped: Claude returned an overloaded error. Your message is saved.</span>
+<button type="button" style="height: 28px; padding: 0 10px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 6px; background: transparent; color: #f1f2f5; font-family: inherit; font-size: 12px; font-weight: 500; cursor: pointer;"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>Retry</button>
+</div>
+</div>
+</section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":2160}}'>
+class Component extends DCLogic {
+renderVals() {
+var tile = function (bg) {
+return 'height: 64px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.1); background: ' + bg + ';';
+};
+var list = [
+['Background', '--background', '#0e0f13'],
+['Card, sidebar', '--card', '#131419'],
+['Popover', '--popover', '#18191f'],
+['Muted', '--muted', '#1e1f26'],
+['Hover surface', '--accent', '#24252d'],
+['Foreground', '--foreground', '#f1f2f5'],
+['Muted text', '--muted-foreground', '#9fa2ad'],
+['Subtle text', '--subtle-foreground', '#83868f'],
+['Primary', '--primary', '#74c0e0'],
+['On primary', '--primary-foreground', '#0b2230'],
+['Success', '--success', '#52cc98'],
+['Warning', '--warning', '#e8c35a'],
+['Destructive', '--destructive', '#ec6f63'],
+['Border', '--border', 'white 7%'],
+['Border strong', '--border-strong', 'white 13%']
+];
+return {
+swatches: list.map(function (r) {
+var bg = r[2].indexOf('white') === 0 ? 'rgba(255,255,255,' + (parseInt(r[2].slice(6), 10) / 100) + ')' : r[2];
+return { label: r[0], token: r[1], hex: r[2], tile: tile(bg) };
+})
+};
+}
+}
+</script>
+</body>
+</html>

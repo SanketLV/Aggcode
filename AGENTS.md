@@ -12,7 +12,7 @@ bun run test                         # bun test, via turbo
 bun run format                       # prettier
 ```
 
-Tests use `bun test`. Only `packages/commons` has tests so far. A package joins `bun run test` by adding `"test": "bun test"` to its scripts. No lint or typecheck tasks are wired up (they exist in turbo.json but both apps have no-op scripts).
+Tests use `bun test`, next to the code (`foo.ts` → `foo.test.ts`). `packages/commons`, `apps/backend` and `apps/frontend` all have tests. `User.ts` needs Mongo, so testable logic goes in pure functions it calls (`apps/backend/providers/authScope.ts`, `apps/frontend/src/lib/composer.ts`). A package joins `bun run test` by adding `"test": "bun test"` to its scripts. No lint or typecheck tasks are wired up (they exist in turbo.json but both apps have no-op scripts).
 
 ## Workflow
 
@@ -39,9 +39,15 @@ Uses `bun --watch`, **not** `bun --hot`. `--hot` re-evaluates in place and re-bi
 
 Backend needs `apps/backend/.env` with `DB_URL=<mongodb connection string>`. If it is missing, mongoose.connect rejects and the WebSocket server is never created — no visible error beyond a console log.
 
+Optional `AGGCODE_CREDENTIALS_KEY` (32 bytes, base64) encrypts API keys stored in Mongo. Unset, a key is created at `~/.aggcode/credentials.key`; losing it only means entering the API key again.
+
+## Provider sign-in
+
+Sign-out must never end machine-wide logins: no `claude auth logout`, no editing OpenCode's `auth.json`. It only removes what Aggcode itself stored or connected. Auth actions look providers up with `findProvider`, never `getProvider` (that one falls back to Claude). Details in `CLAUDE.md` under "Provider sign-in".
+
 ## Adding or changing a message type
 
-Four places to update: `packages/commons/incoming.ts` (schema), `apps/backend/User.ts` (handler), `apps/frontend/src/App.tsx` (onmessage), `packages/db/index.ts` (mongoose schema if it persists).
+Four places to update: `packages/commons/incoming.ts` (schema), `apps/backend/User.ts` (handler), `apps/frontend/src/context/AppContext.tsx` (onmessage), `packages/db/index.ts` (mongoose schema if it persists).
 
 ## Dead scaffolding
 
@@ -52,7 +58,7 @@ Four places to update: `packages/commons/incoming.ts` (schema), `apps/backend/Us
 - **No `tailwind.config`** — theme lives in `styles/globals.css` (Tailwind v4).
 - **Markdown rendering** uses `streamdown`, not `react-markdown`. It needs all three: the dep, `import "streamdown/styles.css"` in App.tsx, and `@source "../node_modules/streamdown/dist/*.js"` in globals.css.
 - Dark mode is locked on (`class="dark"` on `<html>`). No light palette, no toggle.
-- Semantic tokens only (`bg-background`, `bg-card`, etc). No raw palette classes.
+- Semantic tokens only (`bg-background`, `bg-card`, etc; `success` / `warning` for status). No raw palette classes.
 - shadcn/ui `new-york` style, `neutral` base, lucide icons. Components in `src/components/ui/`.
 - Frontend uses `--hot` for HMR (unlike backend which uses `--watch`).
 
