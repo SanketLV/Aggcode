@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, MessageSquare } from "lucide-react";
+import {
+  AlertCircle,
+  ArrowUp,
+  ChevronRight,
+  MessageSquare,
+  MessagesSquare,
+} from "lucide-react";
 import { ICON_STROKE } from "../constants";
-import { composerPlaceholder } from "../lib/composer";
+import { composerHint, composerPlaceholder } from "../lib/composer";
 import { useApp } from "../context/AppContext";
 import { send, partsOf } from "../lib/helpers";
 import type { ToolPart } from "../types";
@@ -14,6 +20,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "./ui/select";
+
+// Starting points that work in any repository, so they never name a file
+// the workspace doesn't have.
+const EXAMPLE_PROMPTS = [
+  "Explain how this project is structured and where to start reading",
+  "Run the tests and fix whatever is failing",
+  "Find code that has no tests and add some for the riskiest part",
+];
+
+const EFFORTS = [
+  { value: "low", label: "Low effort" },
+  { value: "medium", label: "Medium effort" },
+  { value: "high", label: "High effort" },
+  { value: "max", label: "Max effort" },
+];
+
+const CHIP_TRIGGER =
+  "h-7 gap-1.5 border-0 bg-transparent px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground";
 
 export function ChatPane() {
   const {
@@ -34,6 +58,7 @@ export function ChatPane() {
   } = useApp();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const online = status === "open";
 
@@ -72,28 +97,33 @@ export function ChatPane() {
 
   if (!active) {
     return (
-      <main className="flex min-w-0 flex-1 items-center justify-center p-8">
-        <div className="max-w-sm text-center">
-          <MessageSquare
-            strokeWidth={ICON_STROKE}
-            className="mx-auto size-6 text-muted-foreground"
-          />
-          <h2 className="mt-3 text-sm font-medium">No session open</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Open a workspace on the left, then pick one of its sessions or
-            create a new one.
-          </p>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="h-14 shrink-0 border-b border-border" />
+        <div className="flex flex-1 items-center justify-center p-8">
+          <div className="max-w-sm text-center">
+            <MessagesSquare
+              strokeWidth={ICON_STROKE}
+              aria-hidden="true"
+              className="mx-auto size-5 text-subtle-foreground"
+            />
+            <h2 className="mt-3 text-title font-semibold">No session open</h2>
+            <p className="mt-1 text-ui text-muted-foreground">
+              Open a workspace on the left, then pick one of its sessions or
+              start a new one.
+            </p>
+          </div>
         </div>
       </main>
     );
   }
 
-  const currentProvider = active?.session.provider || "claude";
+  const currentProvider = active.session.provider || "claude";
   const providerInfo = providers.find((p) => p.id === currentProvider);
+  const providerName = providerInfo?.name || currentProvider;
   const availableModels = providerInfo?.models || [];
   // A session saved with a since-retired model would otherwise show a blank
   // picker; the backend runs such sessions on the default model too.
-  const savedModel = active?.session.model;
+  const savedModel = active.session.model;
   const currentModel =
     (savedModel && availableModels.some((m) => m.id === savedModel)
       ? savedModel
@@ -101,17 +131,29 @@ export function ChatPane() {
     providerInfo?.defaultModel ||
     availableModels[0]?.id ||
     "";
-  const currentEffort = active?.session.effort || "high";
+  const currentEffort = active.session.effort || "high";
 
   const selectedModelInfo = availableModels.find((m) => m.id === currentModel);
   const supportsEffort = selectedModelInfo?.supportsEffort ?? false;
 
   const currentProviderAuth = providerAuth[currentProvider];
   const isCurrentProviderAuth = currentProviderAuth?.isAuthenticated ?? false;
-  const canChat = online && !isWorking && isCurrentProviderAuth;
+  const canSend =
+    online && !isWorking && isCurrentProviderAuth && draft.trim() !== "";
+
+  const hint = composerHint({
+    online,
+    signedIn: isCurrentProviderAuth,
+    working: isWorking,
+    providerName,
+    authDetails: currentProviderAuth?.details,
+  });
+
+  const title = active.session.messages[0]?.payload.message ?? "New session";
+  const isEmpty =
+    active.session.messages.length === 0 && !isWorking && !error && !liveTurn;
 
   const handleProviderChange = (newProvider: string) => {
-    if (!active) return;
     const targetProv = providers.find((p) => p.id === newProvider);
     const newModel =
       targetProv?.defaultModel || targetProv?.models[0]?.id || "";
@@ -123,7 +165,6 @@ export function ChatPane() {
   };
 
   const handleModelChange = (newModel: string) => {
-    if (!active) return;
     updateSessionConfig(active.session.id, {
       provider: currentProvider,
       model: newModel,
@@ -132,7 +173,6 @@ export function ChatPane() {
   };
 
   const handleEffortChange = (newEffort: string) => {
-    if (!active) return;
     updateSessionConfig(active.session.id, {
       provider: currentProvider,
       model: currentModel,
@@ -140,9 +180,18 @@ export function ChatPane() {
     });
   };
 
+  const openSignIn = () => {
+    setAuthModalProviderId(currentProvider);
+    setAuthModalOpen(true);
+  };
+
+  const applyExample = (prompt: string) => {
+    setDraft(prompt);
+    composerRef.current?.focus();
+  };
+
   const submit = () => {
-    const trimmed = draft.trim();
-    if (trimmed === "" || !online || isWorking || !isCurrentProviderAuth) {
+    if (!canSend) {
       return;
     }
 
@@ -150,7 +199,7 @@ export function ChatPane() {
       type: "add-message",
       payload: {
         sessionId: active.session.id,
-        message: trimmed,
+        message: draft.trim(),
         provider: currentProvider,
         model: currentModel || undefined,
         effort: supportsEffort ? (currentEffort as any) : undefined,
@@ -164,25 +213,66 @@ export function ChatPane() {
 
   return (
     <main className="flex min-w-0 flex-1 flex-col">
-      <header className="flex shrink-0 items-baseline gap-2 border-b border-border px-5 py-3">
-        <span className="truncate text-sm font-medium">
-          {active.workspace.name}
-        </span>
-        <span className="truncate font-mono text-xs text-muted-foreground">
-          {active.workspace.path}
-        </span>
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
+        <div className="flex min-w-0 flex-1 items-baseline gap-2.5">
+          <h2 className="max-w-xl min-w-0 truncate text-title font-semibold">{title}</h2>
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {active.workspace.name}
+          </span>
+          <span
+            title={active.workspace.path}
+            className="truncate font-mono text-micro text-subtle-foreground"
+          >
+            {active.workspace.path}
+          </span>
+        </div>
       </header>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-        {active.session.messages.length === 0 &&
-        !isWorking &&
-        !error &&
-        !liveTurn ? (
-          <p className="mt-8 text-center text-sm text-muted-foreground">
-            Nothing in this session yet. Send the first message.
-          </p>
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5">
+        {isEmpty ? (
+          <div className="mx-auto flex min-h-full max-w-xl flex-col justify-center gap-6 py-10">
+            <div>
+              <div
+                aria-hidden="true"
+                className="flex size-9 items-center justify-center rounded-lg border border-border-strong bg-muted text-muted-foreground"
+              >
+                <MessageSquare strokeWidth={ICON_STROKE} className="size-4.5" />
+              </div>
+              <h3 className="mt-4 text-display font-semibold">
+                What should we change in {active.workspace.name}?
+              </h3>
+              <p className="mt-2 text-sm text-muted-foreground">
+                The agent works inside{" "}
+                <span className="font-mono text-xs text-foreground/85">
+                  {active.workspace.path}
+                </span>{" "}
+                and can read and edit files there. Edits are applied without
+                asking.
+              </p>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <p className="text-xs font-medium text-subtle-foreground">
+                Try one of these
+              </p>
+              {EXAMPLE_PROMPTS.map((prompt) => (
+                <button
+                  key={prompt}
+                  type="button"
+                  onClick={() => applyExample(prompt)}
+                  className="focus-ring flex min-h-10 items-center gap-2.5 rounded-md border border-border bg-card px-3 py-2 text-left text-ui text-foreground/85 transition-colors hover:border-border-strong hover:bg-accent/60 hover:text-foreground motion-reduce:transition-none"
+                >
+                  <span className="flex-1">{prompt}</span>
+                  <ChevronRight
+                    strokeWidth={ICON_STROKE}
+                    aria-hidden="true"
+                    className="size-3.5 shrink-0 text-subtle-foreground"
+                  />
+                </button>
+              ))}
+            </div>
+          </div>
         ) : (
-          <ol className="mx-auto flex max-w-4xl flex-col gap-6">
+          <ol className="mx-auto flex max-w-3xl flex-col gap-6 py-6">
             {active.session.messages.map((message, index) => (
               <li
                 key={index}
@@ -193,7 +283,7 @@ export function ChatPane() {
                 }
               >
                 {message.role === "user" ? (
-                  <div className="max-w-[80%] rounded-lg bg-primary px-3.5 py-2.5 text-sm text-primary-foreground">
+                  <div className="max-w-[80%] rounded-lg bg-muted px-3.5 py-2.5 text-sm text-foreground">
                     <p className="wrap-break-word whitespace-pre-wrap">
                       {message.payload.message}
                     </p>
@@ -221,8 +311,13 @@ export function ChatPane() {
             )}
 
             {error && (
-              <li className="flex justify-start" aria-live="polite">
-                <div className="max-w-[80%] rounded-lg border border-destructive/40 bg-muted px-3.5 py-2.5 text-sm text-destructive">
+              <li aria-live="polite">
+                <div className="flex items-start gap-2.5 rounded-lg border border-destructive/25 bg-destructive/8 px-3 py-2.5 text-sm text-destructive">
+                  <AlertCircle
+                    strokeWidth={ICON_STROKE}
+                    aria-hidden="true"
+                    className="mt-0.5 size-4 shrink-0"
+                  />
                   <p className="wrap-break-word whitespace-pre-wrap">{error}</p>
                 </div>
               </li>
@@ -232,182 +327,150 @@ export function ChatPane() {
       </div>
 
       <form
-        className="shrink-0 border-t border-border px-5 py-4"
+        className="shrink-0 px-5 pb-4"
         onSubmit={(e) => {
           e.preventDefault();
           submit();
         }}
       >
-        {providers.length > 0 && (
-          <div className="mx-auto mb-2 flex max-w-4xl flex-wrap items-center gap-2">
-            {/* Provider */}
-            <Select
-              value={currentProvider}
-              onValueChange={handleProviderChange}
-              disabled={isWorking || !online}
-            >
-              <SelectTrigger
-                size="sm"
-                className="h-7 text-xs bg-muted/40 hover:bg-muted/70 border-border"
-              >
-                <span className="text-muted-foreground mr-1">Provider:</span>
-                <SelectValue placeholder="Provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {providers.map((p) => (
-                  <SelectItem key={p.id} value={p.id} className="text-xs">
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Provider Auth Status Button */}
-            <button
-              type="button"
-              onClick={() => {
-                setAuthModalProviderId(currentProvider);
-                setAuthModalOpen(true);
+        <div className="mx-auto max-w-3xl">
+          <div className="rounded-xl border border-border-strong bg-card shadow-composer transition-colors focus-within:border-ring/60 motion-reduce:transition-none">
+            <label htmlFor="composer" className="sr-only">
+              Message
+            </label>
+            <textarea
+              id="composer"
+              ref={composerRef}
+              rows={2}
+              value={draft}
+              disabled={isWorking || !isCurrentProviderAuth}
+              placeholder={composerPlaceholder({
+                signedIn: isCurrentProviderAuth,
+                working: isWorking,
+                providerName,
+                workspaceName: active.workspace.name,
+              })}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  submit();
+                }
               }}
-              className={`inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[11px] font-medium border transition-colors motion-reduce:transition-none ${
-                isCurrentProviderAuth
-                  ? "border-success/30 bg-success/10 text-success hover:bg-success/20"
-                  : "border-warning/30 bg-warning/10 text-warning hover:bg-warning/20"
-              }`}
-              title={
-                isCurrentProviderAuth
-                  ? currentProviderAuth?.details || "Authenticated"
-                  : "Not authenticated. Click to sign in."
-              }
-            >
-              <span
-                className={`size-1.5 rounded-full ${
-                  isCurrentProviderAuth ? "bg-success" : "bg-warning"
-                }`}
-              />
-              <span>{isCurrentProviderAuth ? "Signed In" : "Sign In"}</span>
-            </button>
+              className="field-sizing-content block max-h-48 min-h-16 w-full resize-none bg-transparent px-4 pt-3.5 pb-1 text-sm text-foreground outline-none placeholder:text-subtle-foreground disabled:cursor-not-allowed"
+            />
 
-            {/* Model */}
-            <Select
-              value={currentModel}
-              onValueChange={handleModelChange}
-              disabled={isWorking || !online || availableModels.length === 0}
-            >
-              <SelectTrigger
-                size="sm"
-                className="h-7 max-w-[280px] text-xs bg-muted/40 hover:bg-muted/70 border-border truncate"
-              >
-                <span className="text-muted-foreground mr-1">Model:</span>
-                <SelectValue placeholder="Model" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableModels.map((m) => (
-                  <SelectItem key={m.id} value={m.id} className="text-xs">
-                    {m.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Effort */}
-            {supportsEffort && (
-              <Select
-                value={currentEffort}
-                onValueChange={handleEffortChange}
-                disabled={isWorking || !online}
-              >
-                <SelectTrigger
-                  size="sm"
-                  className="h-7 text-xs bg-muted/40 hover:bg-muted/70 border-border"
+            <div className="flex items-center gap-0.5 px-2 pt-1.5 pb-2">
+              {providers.length > 0 && (
+                <Select
+                  value={currentProvider}
+                  onValueChange={handleProviderChange}
+                  disabled={isWorking || !online}
                 >
-                  <span className="text-muted-foreground mr-1">Effort:</span>
-                  <SelectValue placeholder="Effort" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="low" className="text-xs">
-                    Low
-                  </SelectItem>
-                  <SelectItem value="medium" className="text-xs">
-                    Medium
-                  </SelectItem>
-                  <SelectItem value="high" className="text-xs">
-                    High
-                  </SelectItem>
-                  <SelectItem value="max" className="text-xs">
-                    Max
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-        )}
-
-        <div className="mx-auto flex max-w-4xl items-end gap-2">
-          <label htmlFor="composer" className="sr-only">
-            Message
-          </label>
-          <textarea
-            id="composer"
-            rows={1}
-            value={draft}
-            disabled={isWorking || !isCurrentProviderAuth}
-            placeholder={composerPlaceholder({
-              signedIn: isCurrentProviderAuth,
-              working: isWorking,
-              providerName: providerInfo?.name || currentProvider,
-            })}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            className="max-h-32 min-w-0 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none disabled:opacity-50 field-sizing-content"
-          />
-          <button
-            type="submit"
-            aria-label="Send message"
-            disabled={
-              !online ||
-              isWorking ||
-              draft.trim() === "" ||
-              !isCurrentProviderAuth
-            }
-            className="rounded-md bg-primary p-2 text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none active:translate-y-px disabled:opacity-50 motion-reduce:transition-none"
-          >
-            <ArrowUp strokeWidth={ICON_STROKE} className="size-4" />
-          </button>
-        </div>
-        {!online ? (
-          <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
-            Disconnected from the server, so messages cannot be saved.
-          </p>
-        ) : !isCurrentProviderAuth ? (
-          <p className="mx-auto mt-2 max-w-4xl text-xs text-warning">
-            {currentProviderAuth?.details ||
-              `Not signed in to ${currentProvider}. Connect a provider to enable chat.`}{" "}
-            {currentProviderAuth?.connectedSubProviders &&
-              currentProviderAuth.connectedSubProviders.length > 0 && (
-                <span className="text-muted-foreground">
-                  • Connected {currentProviderAuth.connectedSubProviders.length}{" "}
-                  provider(s):{" "}
-                  {currentProviderAuth.connectedSubProviders.join(", ")}
-                </span>
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Provider"
+                    className={CHIP_TRIGGER}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`size-1.5 shrink-0 rounded-full ${
+                        isCurrentProviderAuth ? "bg-success" : "bg-warning"
+                      }`}
+                    />
+                    <SelectValue placeholder="Provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {providers.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-xs">
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
+
+              {!isCurrentProviderAuth && (
+                <button
+                  type="button"
+                  onClick={openSignIn}
+                  className="focus-ring h-7 rounded-md bg-warning/10 px-2 text-xs font-medium text-warning transition-colors hover:bg-warning/20 motion-reduce:transition-none"
+                >
+                  Sign in
+                </button>
+              )}
+
+              {availableModels.length > 0 && (
+                <Select
+                  value={currentModel}
+                  onValueChange={handleModelChange}
+                  disabled={isWorking || !online}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Model"
+                    className={`${CHIP_TRIGGER} max-w-56`}
+                  >
+                    <SelectValue placeholder="Model" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableModels.map((m) => (
+                      <SelectItem key={m.id} value={m.id} className="text-xs">
+                        {m.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              {supportsEffort && (
+                <Select
+                  value={currentEffort}
+                  onValueChange={handleEffortChange}
+                  disabled={isWorking || !online}
+                >
+                  <SelectTrigger
+                    size="sm"
+                    aria-label="Effort"
+                    className={CHIP_TRIGGER}
+                  >
+                    <SelectValue placeholder="Effort" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {EFFORTS.map((e) => (
+                      <SelectItem
+                        key={e.value}
+                        value={e.value}
+                        className="text-xs"
+                      >
+                        {e.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <span className="flex-1" />
+
+              <button
+                type="submit"
+                aria-label="Send message"
+                disabled={!canSend}
+                className="focus-ring flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground transition-colors hover:bg-primary/90 active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40 disabled:active:translate-y-0 motion-reduce:transition-none"
+              >
+                <ArrowUp strokeWidth={2} className="size-4" />
+              </button>
+            </div>
+          </div>
+
+          <p
+            className={`mt-2 px-1 text-xs ${
+              hint.tone === "warning" ? "text-warning" : "text-subtle-foreground"
+            }`}
+          >
+            {hint.text}
           </p>
-        ) : isWorking ? (
-          <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
-            The agent is still working on this session. One turn at a time.
-          </p>
-        ) : currentProviderAuth?.connectedSubProviders &&
-          currentProviderAuth.connectedSubProviders.length > 0 ? (
-          <p className="mx-auto mt-2 max-w-4xl text-xs text-muted-foreground">
-            Connected {currentProviderAuth.connectedSubProviders.length}{" "}
-            provider(s): {currentProviderAuth.connectedSubProviders.join(", ")}
-          </p>
-        ) : null}
+        </div>
       </form>
     </main>
   );

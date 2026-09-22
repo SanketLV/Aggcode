@@ -97,27 +97,24 @@ export function ProviderAuthModal() {
 
   return (
     <Dialog open={authModalOpen} onOpenChange={setAuthModalOpen}>
-      <DialogContent className="max-w-xl p-0 overflow-hidden bg-background border-border">
+      <DialogContent className="max-w-xl gap-0 overflow-hidden p-0">
         {/* Header */}
         <DialogHeader className="px-6 pt-6 pb-4 border-b border-border">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center size-8 rounded-lg bg-primary/10 text-primary">
+            <div className="flex size-8 items-center justify-center rounded-lg border border-border-strong bg-muted text-muted-foreground">
               <Key strokeWidth={ICON_STROKE} className="size-4" />
             </div>
             <div>
-              <DialogTitle className="text-base font-semibold">
-                AI Provider Authentication
-              </DialogTitle>
-              <DialogDescription className="text-xs text-muted-foreground">
-                Manage credentials and authentication for available AI
-                providers.
+              <DialogTitle>Providers</DialogTitle>
+              <DialogDescription className="text-xs">
+                Sign in to the AI providers that run your sessions.
               </DialogDescription>
             </div>
           </div>
         </DialogHeader>
 
         {/* Provider Tabs / Selector */}
-        <div className="flex border-b border-border bg-muted/30 px-6 gap-2">
+        <div role="tablist" aria-label="Providers" className="flex gap-1 border-b border-border px-4">
           {providerDescriptors.map((p) => {
             const isSelected = p.id === selectedProviderId;
             const pAuth = providerAuth[p.id];
@@ -127,15 +124,18 @@ export function ProviderAuthModal() {
               <button
                 key={p.id}
                 type="button"
+                role="tab"
+                aria-selected={isSelected}
                 onClick={() => setSelectedProviderId(p.id)}
-                className={`flex items-center gap-2 px-3.5 py-2.5 text-xs font-medium border-b-2 transition-colors ${
+                className={`focus-ring -mb-px flex items-center gap-2 border-b-2 px-3 py-2.5 text-xs font-medium transition-colors motion-reduce:transition-none ${
                   isSelected
-                    ? "border-primary text-foreground bg-background/50"
+                    ? "border-primary text-foreground"
                     : "border-transparent text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <span
-                  className={`size-2 rounded-full ${
+                  aria-hidden="true"
+                  className={`size-1.5 rounded-full ${
                     isAuth ? "bg-success" : "bg-warning"
                   }`}
                 />
@@ -146,27 +146,35 @@ export function ProviderAuthModal() {
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-5 max-h-[70vh] overflow-y-auto">
+        <div className="max-h-[70vh] space-y-5 overflow-y-auto p-6">
           {/* Status Card */}
-          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+          <div className="space-y-3 rounded-lg border border-border bg-card p-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5">
-                <span
-                  className={`size-2.5 rounded-full ${
-                    isAuthenticated ? "bg-success" : "bg-warning"
-                  }`}
-                />
-                <span className="text-sm font-medium">
+                <span className="text-ui font-medium">
                   {currentDescriptor?.name || selectedProviderId}
                 </span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-[10px] font-medium border ${
+                  className={`inline-flex h-5 items-center gap-1 rounded-sm border px-1.5 text-micro font-medium ${
                     isAuthenticated
-                      ? "border-success/30 bg-success/10 text-success"
-                      : "border-warning/30 bg-warning/10 text-warning"
+                      ? "border-success/25 bg-success/10 text-success"
+                      : "border-warning/25 bg-warning/10 text-warning"
                   }`}
                 >
-                  {isAuthenticated ? "Authenticated" : "Not Signed In"}
+                  {isAuthenticated ? (
+                    <CheckCircle2
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="size-3"
+                    />
+                  ) : (
+                    <AlertCircle
+                      strokeWidth={2}
+                      aria-hidden="true"
+                      className="size-3"
+                    />
+                  )}
+                  {isAuthenticated ? "Signed in" : "Not signed in"}
                 </span>
               </div>
 
@@ -176,20 +184,20 @@ export function ProviderAuthModal() {
                   variant="destructive"
                   disabled={authActionState.loading}
                   onClick={() => logoutProvider(selectedProviderId)}
-                  className="h-7 text-xs gap-1.5"
+                  className="gap-1.5"
                 >
                   {authActionState.loading ? (
-                    <Loader2 className="size-3 animate-spin" />
+                    <Loader2 className="size-3 animate-spin motion-reduce:animate-none" />
                   ) : (
                     <LogOut strokeWidth={ICON_STROKE} className="size-3" />
                   )}
-                  Sign Out
+                  Sign out
                 </Button>
               )}
             </div>
 
             {currentAuth?.details && (
-              <p className="text-xs text-muted-foreground font-mono bg-muted/50 rounded-md p-2.5">
+              <p className="rounded-md bg-muted/60 p-2.5 text-xs text-muted-foreground">
                 {currentAuth.details}
               </p>
             )}
@@ -197,27 +205,28 @@ export function ProviderAuthModal() {
             {/* Sub-providers list if available (e.g. OpenCode connected providers) */}
             {currentAuth?.connectedSubProviders &&
               currentAuth.connectedSubProviders.length > 0 && (
-                <div className="pt-2 border-t border-border/60">
-                  <span className="text-xs text-muted-foreground block mb-1.5">
-                    Connected Accounts / Providers:
+                <div className="border-t border-border pt-3">
+                  <span className="mb-1.5 block text-xs text-muted-foreground">
+                    Connected accounts
                   </span>
                   <div className="flex flex-wrap gap-1.5">
                     {currentAuth.connectedSubProviders.map((sub) => (
                       <span
                         key={sub}
-                        className="inline-flex items-center gap-1.5 rounded-md bg-muted px-2.5 py-1 text-xs font-mono text-foreground border border-border"
+                        className="inline-flex h-6 items-center gap-1 rounded-sm border border-border bg-muted pr-0.5 pl-2 font-mono text-micro text-foreground"
                       >
                         {sub}
                         <button
                           type="button"
+                          aria-label={`Disconnect ${sub}`}
                           title={`Disconnect ${sub}`}
                           disabled={authActionState.loading}
                           onClick={() =>
                             logoutProvider(selectedProviderId, sub)
                           }
-                          className="hover:text-destructive transition-colors ml-0.5"
+                          className="focus-ring flex size-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:bg-destructive/12 hover:text-destructive disabled:opacity-50 motion-reduce:transition-none"
                         >
-                          <X className="size-3" />
+                          <X strokeWidth={ICON_STROKE} className="size-3" />
                         </button>
                       </span>
                     ))}
@@ -228,7 +237,7 @@ export function ProviderAuthModal() {
 
           {/* Feedback banner */}
           {authActionState.message && (
-            <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-xs text-success">
+            <div role="status" className="flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 p-3 text-xs text-success">
               <CheckCircle2
                 strokeWidth={ICON_STROKE}
                 className="size-4 shrink-0"
@@ -238,7 +247,7 @@ export function ProviderAuthModal() {
           )}
 
           {authActionState.error && (
-            <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+            <div role="alert" className="flex items-center gap-2 rounded-lg border border-destructive/25 bg-destructive/8 p-3 text-xs text-destructive">
               <AlertCircle
                 strokeWidth={ICON_STROKE}
                 className="size-4 shrink-0"
@@ -251,9 +260,7 @@ export function ProviderAuthModal() {
           {authMethods.length > 0 && (
             <div className="space-y-4">
               <div className="text-xs font-medium text-foreground">
-                {isAuthenticated
-                  ? "Update or Connect Credentials"
-                  : "Sign In or Connect"}
+                {isAuthenticated ? "Update credentials" : "Sign in"}
               </div>
 
               {/* Method Picker if multiple */}
@@ -265,18 +272,19 @@ export function ProviderAuthModal() {
                       <button
                         key={method.id}
                         type="button"
+                        aria-pressed={isSelected}
                         onClick={() => setSelectedMethodId(method.id)}
-                        className={`text-left p-3 rounded-lg border text-xs transition-all ${
+                        className={`focus-ring rounded-md border p-3 text-left text-xs transition-colors motion-reduce:transition-none ${
                           isSelected
-                            ? "border-primary bg-primary/5 text-foreground ring-1 ring-primary"
-                            : "border-border bg-card text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                            ? "border-primary/60 bg-accent text-foreground"
+                            : "border-border bg-card text-muted-foreground hover:bg-accent/60 hover:text-foreground"
                         }`}
                       >
                         <div className="font-medium text-foreground">
                           {method.label}
                         </div>
                         {method.description && (
-                          <div className="text-[11px] text-muted-foreground mt-1 line-clamp-2">
+                          <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                             {method.description}
                           </div>
                         )}
@@ -320,10 +328,10 @@ export function ProviderAuthModal() {
                               handleInputChange(field.id, e.target.value)
                             }
                             required={field.required}
-                            className="w-full rounded-md border border-input bg-background px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                            className="focus-ring h-8 w-full rounded-md border border-input bg-background px-3 text-xs text-foreground placeholder:text-subtle-foreground"
                           />
                           {field.description && (
-                            <p className="text-[11px] text-muted-foreground">
+                            <p className="text-xs text-muted-foreground">
                               {field.description}
                             </p>
                           )}
@@ -333,12 +341,12 @@ export function ProviderAuthModal() {
                       <Button
                         type="submit"
                         disabled={authActionState.loading}
-                        className="w-full h-8 text-xs font-medium gap-2"
+                        className="w-full gap-2"
                       >
                         {authActionState.loading ? (
                           <>
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Connecting...
+                            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                            Connecting…
                           </>
                         ) : (
                           <>
@@ -346,7 +354,7 @@ export function ProviderAuthModal() {
                               strokeWidth={ICON_STROKE}
                               className="size-3.5"
                             />
-                            Connect Credentials
+                            Connect
                           </>
                         )}
                       </Button>
@@ -356,12 +364,12 @@ export function ProviderAuthModal() {
                       <Button
                         type="submit"
                         disabled={authActionState.loading}
-                        className="w-full h-8 text-xs font-medium gap-2"
+                        className="w-full gap-2"
                       >
                         {authActionState.loading ? (
                           <>
-                            <Loader2 className="size-3.5 animate-spin" />
-                            Opening browser...
+                            <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                            Opening browser…
                           </>
                         ) : (
                           <>
@@ -373,13 +381,12 @@ export function ProviderAuthModal() {
                           </>
                         )}
                       </Button>
-                      <p className="mt-2 text-center text-[11px] text-muted-foreground">
-                        Clicking this will launch your browser to complete
-                        authentication.
+                      <p className="mt-2 text-center text-xs text-muted-foreground">
+                        Your browser opens to finish signing in.
                       </p>
                     </div>
                   ) : (
-                    <div className="rounded-md border border-border/80 bg-muted/30 p-3 text-xs text-muted-foreground">
+                    <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
                       {currentMethod.description || "No credentials required."}
                     </div>
                   )}
