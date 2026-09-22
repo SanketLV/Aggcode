@@ -58,7 +58,10 @@ Four places to update: `packages/commons/incoming.ts` (schema), `apps/backend/Us
 - **No `tailwind.config`** — theme lives in `styles/globals.css` (Tailwind v4).
 - **Markdown rendering** uses `streamdown`, not `react-markdown`. It needs all three: the dep, `import "streamdown/styles.css"` in App.tsx, and `@source "../node_modules/streamdown/dist/*.js"` in globals.css.
 - Dark mode is locked on (`class="dark"` on `<html>`). No light palette, no toggle.
+- Design system: build all UI to `apps/frontend/DESIGN.md`; token values live in `styles/globals.css`. The canvas source in `apps/frontend/design/` stays outside `src/`, because `build.ts` bundles every `src/**/*.html`.
 - Semantic tokens only (`bg-background`, `bg-card`, etc; `success` / `warning` for status). No raw palette classes.
+- Focus styles use the `focus-ring` utility from `globals.css`, never a hand written `focus-visible:ring-*` string.
+- Custom text sizes (`text-micro`, `text-ui`, `text-title`, `text-display`) must be registered in `src/lib/utils.ts`, or `cn()` reads them as colours and drops them.
 - shadcn/ui `new-york` style, `neutral` base, lucide icons. Components in `src/components/ui/`.
 - Frontend uses `--hot` for HMR (unlike backend which uses `--watch`).
 
