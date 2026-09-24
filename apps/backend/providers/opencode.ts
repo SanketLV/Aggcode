@@ -131,7 +131,7 @@ export class OpenCodeProvider implements AgentProvider {
         label: "Use OpenCode as installed",
         type: "none",
         description:
-          "Use OpenCode's free models and any provider already connected to it. No key needed.",
+          "Free models and any provider already connected. No key needed.",
       },
       {
         id: "connect",

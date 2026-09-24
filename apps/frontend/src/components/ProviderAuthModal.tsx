@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { ICON_STROKE } from "../constants";
 import { useApp } from "../context/AppContext";
+import { methodKind } from "../lib/authMethod";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -82,6 +83,7 @@ export function ProviderAuthModal() {
   }, [selectedProviderId, authMethods.length]);
 
   const currentMethod = authMethods.find((m) => m.id === selectedMethodId);
+  const currentKind = currentMethod ? methodKind(currentMethod) : undefined;
 
   const handleInputChange = (fieldId: string, value: string) => {
     setFormValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -314,9 +316,9 @@ export function ProviderAuthModal() {
                   )}
 
                   {/* Render fields dynamically */}
-                  {currentMethod.fields && currentMethod.fields.length > 0 ? (
+                  {currentKind === "fields" ? (
                     <div className="space-y-3">
-                      {currentMethod.fields.map((field) => (
+                      {(currentMethod.fields ?? []).map((field) => (
                         <div key={field.id} className="space-y-1">
                           <label
                             htmlFor={`field-${field.id}`}
@@ -369,7 +371,7 @@ export function ProviderAuthModal() {
                         )}
                       </Button>
                     </div>
-                  ) : currentMethod.type === "oauth" ? (
+                  ) : currentKind === "oauth" ? (
                     <div className="pt-1">
                       <Button
                         type="submit"
@@ -396,9 +398,26 @@ export function ProviderAuthModal() {
                       </p>
                     </div>
                   ) : (
-                    <div className="rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-                      {currentMethod.description || "No credentials required."}
-                    </div>
+                    <Button
+                      type="submit"
+                      disabled={authActionState.loading}
+                      className="w-full gap-2"
+                    >
+                      {authActionState.loading ? (
+                        <>
+                          <Loader2 className="size-3.5 animate-spin motion-reduce:animate-none" />
+                          Connecting…
+                        </>
+                      ) : (
+                        <>
+                          <ShieldCheck
+                            strokeWidth={ICON_STROKE}
+                            className="size-3.5"
+                          />
+                          Connect
+                        </>
+                      )}
+                    </Button>
                   )}
                 </form>
               )}
