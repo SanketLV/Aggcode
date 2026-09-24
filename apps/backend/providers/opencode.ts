@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import mongoose from "mongoose";
 import { createOpencodeClient } from "@opencode-ai/sdk";
 // v1 has no provider-credential removal; v2 exposes DELETE /auth/{providerID}.
 import { createOpencodeClient as createOpencodeClientV2 } from "@opencode-ai/sdk/v2";
@@ -9,6 +10,7 @@ import {
   connectWithOwnership,
   isValidSubProviderId,
   planOpenCodeLogout,
+  resolveOpenCodeStatus,
 } from "./authScope";
 import { buildModelOptions, parseModelRef } from "./openCodeModels";
 import { ensureOpenCodeServer } from "./serverManager";
@@ -61,12 +63,76 @@ function toolDetail(input: unknown, cwd: string): string {
   return "";
 }
 
+const LOCAL_METHOD_ID = "local";
+
+// The built-in "opencode" provider serves the free models whether or not
+// anyone signed in, so it does not count as a connection.
+async function listExternalConnected(): Promise<string[]> {
+  const baseUrl = await ensureOpenCodeServer();
+  const client = createOpencodeClient({ baseUrl });
+  const provList = await client.provider.list();
+  const connected = provList.data?.connected || [];
+
+  const home = process.env.USERPROFILE || process.env.HOME || "";
+  const authPath = path.join(home, ".local", "share", "opencode", "auth.json");
+  let extraProviders: string[] = [];
+  if (fs.existsSync(authPath)) {
+    try {
+      const parsed = JSON.parse(fs.readFileSync(authPath, "utf8"));
+      extraProviders = Object.keys(parsed);
+    } catch (err) {
+      console.warn(`[opencode auth] Unreadable ${authPath}:`, err);
+    }
+  }
+
+  return Array.from(new Set([...connected, ...extraProviders])).filter(
+    (id) => id.toLowerCase() !== "opencode",
+  );
+}
+
+async function readLocalOptIn(): Promise<boolean> {
+  if (mongoose.connection.readyState !== 1) {
+    return false;
+  }
+  try {
+    const config = await ProviderConfigModel.findOne({
+      providerId: "opencode",
+    });
+    return config?.authMethod === LOCAL_METHOD_ID;
+  } catch (err) {
+    console.warn("[opencode auth] Could not read the opt-in:", err);
+    return false;
+  }
+}
+
+// After a full sign-out the user can still show as signed in through a
+// provider connected outside Aggcode, which would otherwise look like the
+// sign-out failed.
+async function outsideConnectionsNote(): Promise<string> {
+  try {
+    const remaining = await listExternalConnected();
+    return remaining.length > 0
+      ? ` Still signed in through ${remaining.join(", ")}, connected outside Aggcode. Run \`opencode auth logout\` in a terminal to remove it.`
+      : "";
+  } catch (err) {
+    console.warn("[opencode auth] Could not list remaining providers:", err);
+    return "";
+  }
+}
+
 export class OpenCodeProvider implements AgentProvider {
   id = "opencode";
   name = "OpenCode";
 
   auth: AuthProviderPlugin = {
     getAuthMethods: () => [
+      {
+        id: LOCAL_METHOD_ID,
+        label: "Use OpenCode as installed",
+        type: "none",
+        description:
+          "Use OpenCode's free models and any provider already connected to it. No key needed.",
+      },
       {
         id: "connect",
         label: "Connect Model Provider (API Key)",
@@ -96,52 +162,9 @@ export class OpenCodeProvider implements AgentProvider {
 
     getAuthStatus: async (): Promise<ProviderAuthStatus> => {
       try {
-        const baseUrl = await ensureOpenCodeServer();
-        const client = createOpencodeClient({ baseUrl });
-        const provList = await client.provider.list();
-        const connected = provList.data?.connected || [];
-
-        const home = process.env.USERPROFILE || process.env.HOME || "";
-        const authPath = path.join(
-          home,
-          ".local",
-          "share",
-          "opencode",
-          "auth.json",
-        );
-        let extraProviders: string[] = [];
-        if (fs.existsSync(authPath)) {
-          try {
-            const parsed = JSON.parse(fs.readFileSync(authPath, "utf8"));
-            extraProviders = Object.keys(parsed);
-          } catch (err) {
-            console.warn(`[opencode auth] Unreadable ${authPath}:`, err);
-          }
-        }
-        const allConnected = Array.from(
-          new Set([...connected, ...extraProviders]),
-        );
-
-        // Gated: chat is disabled when no external provider is connected,
-        // even though free models exist. The built-in "opencode" provider
-        // itself does not count as signed in.
-        const externalConnected = allConnected.filter(
-          (id) => id.toLowerCase() !== "opencode",
-        );
-        const isAuthenticated = externalConnected.length > 0;
-
-        return {
-          providerId: "opencode",
-          isAuthenticated,
-          method: isAuthenticated ? "api_key" : "none",
-          accountName: isAuthenticated
-            ? externalConnected.join(", ")
-            : "Not signed in",
-          details: isAuthenticated
-            ? `Connected ${externalConnected.length} provider${externalConnected.length === 1 ? "" : "s"}: ${externalConnected.join(", ")}`
-            : "Not signed in. Connect a provider to enable chat. Free models are disabled when signed out.",
-          connectedSubProviders: externalConnected,
-        };
+        const externalConnected = await listExternalConnected();
+        const optedIn = await readLocalOptIn();
+        return resolveOpenCodeStatus({ externalConnected, optedIn });
       } catch (err) {
         return {
           providerId: "opencode",
@@ -158,6 +181,46 @@ export class OpenCodeProvider implements AgentProvider {
       method,
       credentials,
     }): Promise<{ success: boolean; message?: string }> => {
+      if (method === LOCAL_METHOD_ID) {
+        try {
+          await ensureOpenCodeServer();
+        } catch (err) {
+          return {
+            success: false,
+            message: `OpenCode server is not available: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
+
+        // Without the database the choice would look saved and then vanish on
+        // the next restart.
+        if (mongoose.connection.readyState !== 1) {
+          return {
+            success: false,
+            message:
+              "The database is not connected, so this could not be saved.",
+          };
+        }
+
+        try {
+          await ProviderConfigModel.findOneAndUpdate(
+            { providerId: "opencode" },
+            { $set: { authMethod: LOCAL_METHOD_ID, updatedAt: new Date() } },
+            { upsert: true },
+          );
+        } catch (err) {
+          console.error("[opencode auth] Could not save the opt-in:", err);
+          return {
+            success: false,
+            message: `Could not save this choice: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          };
+        }
+        return { success: true, message: "Using OpenCode as installed." };
+      }
+
       if (method === "connect") {
         const subProvider = credentials?.subProvider?.trim().toLowerCase();
         const apiKey = credentials?.apiKey?.trim();
@@ -257,7 +320,7 @@ export class OpenCodeProvider implements AgentProvider {
         providerId: "opencode",
       });
       const appConnected = Array.from(config?.credentials?.keys() ?? []);
-      const { remove, notOwned } = planOpenCodeLogout(
+      const { remove, notOwned, clearOptIn } = planOpenCodeLogout(
         appConnected,
         params?.target,
       );
@@ -268,10 +331,21 @@ export class OpenCodeProvider implements AgentProvider {
           message: `${notOwned.join(", ")} was connected outside Aggcode, so Aggcode leaves it alone. Run \`opencode auth logout\` in a terminal to remove it.`,
         };
       }
+
+      // Only Aggcode's own record of the choice, so OpenCode itself is untouched.
+      if (clearOptIn) {
+        await ProviderConfigModel.updateOne(
+          { providerId: "opencode" },
+          { $unset: { authMethod: "" } },
+        );
+      }
+
       if (remove.length === 0) {
         return {
           success: true,
-          message: "Aggcode has not connected any providers to OpenCode.",
+          message: clearOptIn
+            ? `Stopped using OpenCode as installed.${await outsideConnectionsNote()}`
+            : "Aggcode has not connected any providers to OpenCode.",
         };
       }
 
@@ -303,7 +377,9 @@ export class OpenCodeProvider implements AgentProvider {
       }
       return {
         success: true,
-        message: `Disconnected ${removed.join(", ")} from OpenCode.`,
+        message: `Disconnected ${removed.join(", ")} from OpenCode.${
+          clearOptIn ? await outsideConnectionsNote() : ""
+        }`,
       };
     },
   };

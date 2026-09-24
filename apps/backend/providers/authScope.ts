@@ -52,14 +52,57 @@ export function memoizeAsync<T>(
 export function planOpenCodeLogout(
   appConnected: string[],
   target?: string,
-): { remove: string[]; notOwned: string[] } {
+): { remove: string[]; notOwned: string[]; clearOptIn: boolean } {
+  // Dropping one provider chip must not end "use OpenCode as installed", only
+  // a full sign-out does.
   if (target === undefined) {
-    return { remove: [...appConnected], notOwned: [] };
+    return { remove: [...appConnected], notOwned: [], clearOptIn: true };
   }
   const id = target.toLowerCase();
   return appConnected.includes(id)
-    ? { remove: [id], notOwned: [] }
-    : { remove: [], notOwned: [id] };
+    ? { remove: [id], notOwned: [], clearOptIn: false }
+    : { remove: [], notOwned: [id], clearOptIn: false };
+}
+
+// `externalConnected` excludes OpenCode's built-in provider, which serves the
+// free models whether or not anyone signed in. `optedIn` is Aggcode's own
+// record that the user chose "use OpenCode as installed".
+export function resolveOpenCodeStatus(input: {
+  externalConnected: string[];
+  optedIn: boolean;
+}): ProviderAuthStatus {
+  const { externalConnected, optedIn } = input;
+
+  if (externalConnected.length > 0) {
+    return {
+      providerId: "opencode",
+      isAuthenticated: true,
+      method: "api_key",
+      accountName: externalConnected.join(", "),
+      details: `Connected ${externalConnected.length} provider${externalConnected.length === 1 ? "" : "s"}: ${externalConnected.join(", ")}`,
+      connectedSubProviders: externalConnected,
+    };
+  }
+
+  if (optedIn) {
+    return {
+      providerId: "opencode",
+      isAuthenticated: true,
+      method: "local",
+      accountName: "OpenCode as installed",
+      details:
+        "Using OpenCode as installed: its free models, plus any provider you connect to OpenCode.",
+    };
+  }
+
+  return {
+    providerId: "opencode",
+    isAuthenticated: false,
+    method: "none",
+    accountName: "Not signed in",
+    details:
+      "Not signed in. Connect a provider, or use OpenCode as installed, to enable chat.",
+  };
 }
 
 // The id becomes both a Mongo map key and a URL path segment.
