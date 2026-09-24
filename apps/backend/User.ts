@@ -17,14 +17,15 @@ import { SessionModel, WorkspaceModel } from "db/client";
 import mongoose from "mongoose";
 import { WebSocket } from "ws";
 import {
-  CLAUDE_CATALOG,
   findProvider,
   getAuthSnapshot,
+  getClaudeCatalog,
   getProvider,
   getProviderCatalog,
-  resolveModel,
+  invalidateClaudeCatalog,
 } from "./providers";
 import { chatGateRejection } from "./providers/authScope";
+import { resolveClaudeRun } from "./providers/claudeModels";
 import { buildHandoffTranscript } from "./providers/workspaceContext";
 
 // Workspace paths arrive in whatever form the OS uses, so split on both separators.
@@ -198,11 +199,15 @@ export class User {
 
       const targetProvider = requestedProvider || session.provider || "claude";
       const rawModel = requestedModel || session.model || undefined;
-      const targetModel =
+      const rawEffort = requestedEffort || session.effort || undefined;
+      // For Claude the model and effort are chosen together, because the levels
+      // a run may use belong to the model that actually runs.
+      const claudeRun =
         targetProvider === "claude"
-          ? resolveModel(CLAUDE_CATALOG, rawModel)
-          : rawModel;
-      const targetEffort = requestedEffort || session.effort || undefined;
+          ? resolveClaudeRun(getClaudeCatalog(), rawModel, rawEffort)
+          : undefined;
+      const targetModel = claudeRun ? claudeRun.model : rawModel;
+      const targetEffort = claudeRun ? claudeRun.effort : rawEffort;
 
       // Chat needs a signed-in provider, even for OpenCode's free models
       // (product requirement).
@@ -388,6 +393,11 @@ export class User {
         payload: { statuses, descriptors },
       });
 
+      // The live model list belongs to the account that was signed in.
+      if (providerId === "claude") {
+        invalidateClaudeCatalog();
+      }
+
       const updatedCatalog = await getProviderCatalog();
       return {
         type: "provider-catalog-updated",
@@ -442,6 +452,11 @@ export class User {
         type: "provider-auth-updated",
         payload: { statuses, descriptors },
       });
+
+      // The live model list belongs to the account that was signed in.
+      if (providerId === "claude") {
+        invalidateClaudeCatalog();
+      }
 
       const updatedCatalog = await getProviderCatalog();
       return {
