@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { buildClaudeCatalog, type SdkModelRow } from "./claudeModels";
+import type { ProviderOption } from "commons/types";
+import {
+  buildClaudeCatalog,
+  createLiveCatalog,
+  type SdkModelRow,
+} from "./claudeModels";
 
 const BASE = { id: "claude", name: "Claude Code" };
 const FULL = ["low", "medium", "high", "xhigh", "max"];
@@ -157,5 +162,240 @@ describe("buildClaudeCatalog", () => {
     );
     expect(catalog?.models.map((m) => m.id)).toEqual(["claude-sonnet-5"]);
     expect(catalog?.defaultModel).toBe("claude-sonnet-5");
+  });
+});
+
+// A promise the test resolves or rejects by hand, so it decides when a
+// fetch "finishes".
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+const FALLBACK: ProviderOption = {
+  id: "claude",
+  name: "Claude Code",
+  defaultModel: "claude-sonnet-5",
+  models: [{ id: "claude-sonnet-5", name: "Claude Sonnet 5" }],
+};
+
+const TTL = 10 * 60_000;
+const RETRY = 60_000;
+
+function harness(
+  fetches: Array<ReturnType<typeof deferred<readonly SdkModelRow[]>>>,
+) {
+  let now = 1_000_000;
+  let calls = 0;
+  const errors: unknown[] = [];
+  const catalog = createLiveCatalog({
+    fallback: FALLBACK,
+    fetchRows: () => {
+      const next = fetches[calls];
+      calls++;
+      if (!next) {
+        throw new Error("unexpected extra fetch");
+      }
+      return next.promise;
+    },
+    ttlMs: TTL,
+    retryMs: RETRY,
+    now: () => now,
+    onError: (err) => errors.push(err),
+  });
+  return {
+    catalog,
+    errors,
+    calls: () => calls,
+    advance: (ms: number) => {
+      now += ms;
+    },
+  };
+}
+
+describe("createLiveCatalog", () => {
+  test("serves the fallback and starts one fetch before anything has loaded", () => {
+    const h = harness([deferred()]);
+    expect(h.catalog.get()).toBe(FALLBACK);
+    expect(h.calls()).toBe(1);
+  });
+
+  test("serves the live catalog once the fetch lands", async () => {
+    const fetch = deferred<readonly SdkModelRow[]>();
+    const h = harness([fetch]);
+    h.catalog.get();
+    fetch.resolve(sdkRows);
+    await flush();
+    expect(h.catalog.get().models.map((m) => m.id)).toContain(
+      "claude-fable-5-1",
+    );
+  });
+
+  test("callers while a fetch is in flight share it", () => {
+    const h = harness([deferred()]);
+    h.catalog.get();
+    h.catalog.get();
+    h.catalog.warm();
+    expect(h.calls()).toBe(1);
+  });
+
+  test("does not refetch inside the ttl, and refetches after it", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const second = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, second]);
+    h.catalog.get();
+    first.resolve(sdkRows);
+    await flush();
+
+    h.advance(TTL - 1);
+    h.catalog.get();
+    expect(h.calls()).toBe(1);
+
+    h.advance(2);
+    h.catalog.get();
+    expect(h.calls()).toBe(2);
+  });
+
+  test("keeps serving the old live catalog while a refresh is running", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, deferred()]);
+    h.catalog.get();
+    first.resolve(sdkRows);
+    await flush();
+    const live = h.catalog.get();
+
+    h.advance(TTL + 1);
+    expect(h.catalog.get()).toBe(live);
+  });
+
+  test("a failed fetch serves the fallback and reports the error", async () => {
+    const fetch = deferred<readonly SdkModelRow[]>();
+    const h = harness([fetch]);
+    h.catalog.get();
+    fetch.reject(new Error("claude: command not found"));
+    await flush();
+
+    expect(h.catalog.get()).toBe(FALLBACK);
+    expect(h.errors).toHaveLength(1);
+  });
+
+  // A signed-out user would otherwise start a multi-second process on every
+  // catalog read.
+  test("backs off after a failure instead of retrying on every read", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const second = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, second]);
+    h.catalog.get();
+    first.reject(new Error("signed out"));
+    await flush();
+
+    h.catalog.get();
+    h.catalog.get();
+    h.advance(RETRY - 1);
+    h.catalog.get();
+    expect(h.calls()).toBe(1);
+
+    h.advance(2);
+    h.catalog.get();
+    expect(h.calls()).toBe(2);
+  });
+
+  test("a failure does not throw away a good catalog", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const second = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, second]);
+    h.catalog.get();
+    first.resolve(sdkRows);
+    await flush();
+    const live = h.catalog.get();
+
+    h.advance(TTL + 1);
+    h.catalog.get();
+    second.reject(new Error("timed out"));
+    await flush();
+
+    expect(h.catalog.get()).toBe(live);
+  });
+
+  test("an empty list counts as a failure", async () => {
+    const fetch = deferred<readonly SdkModelRow[]>();
+    const h = harness([fetch]);
+    h.catalog.get();
+    fetch.resolve([]);
+    await flush();
+
+    expect(h.catalog.get()).toBe(FALLBACK);
+    expect(h.errors).toHaveLength(1);
+  });
+
+  test("invalidate drops the live catalog and fetches again", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const second = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, second]);
+    h.catalog.get();
+    first.resolve(sdkRows);
+    await flush();
+
+    h.catalog.invalidate();
+    expect(h.catalog.get()).toBe(FALLBACK);
+    expect(h.calls()).toBe(2);
+  });
+
+  test("invalidate clears a failure backoff so a new sign-in retries at once", async () => {
+    const first = deferred<readonly SdkModelRow[]>();
+    const second = deferred<readonly SdkModelRow[]>();
+    const h = harness([first, second]);
+    h.catalog.get();
+    first.reject(new Error("signed out"));
+    await flush();
+
+    h.catalog.invalidate();
+    expect(h.calls()).toBe(2);
+  });
+
+  // The list belongs to the account that was signed in when the fetch began.
+  test("a fetch that started before an invalidate is ignored", async () => {
+    const stale = deferred<readonly SdkModelRow[]>();
+    const fresh = deferred<readonly SdkModelRow[]>();
+    const h = harness([stale, fresh]);
+    h.catalog.get();
+    h.catalog.invalidate();
+
+    stale.resolve(sdkRows);
+    await flush();
+    expect(h.catalog.get()).toBe(FALLBACK);
+
+    fresh.resolve(sdkRows.slice(3));
+    await flush();
+    expect(h.catalog.get().models.map((m) => m.id)).toEqual([
+      "claude-opus-5",
+      "claude-haiku-4-5-20251001",
+    ]);
+  });
+
+  test("a fetch that throws synchronously is a failure, not a crash", async () => {
+    let now = 0;
+    const errors: unknown[] = [];
+    const catalog = createLiveCatalog({
+      fallback: FALLBACK,
+      fetchRows: () => {
+        throw new Error("spawn failed");
+      },
+      ttlMs: TTL,
+      retryMs: RETRY,
+      now: () => now,
+      onError: (err) => errors.push(err),
+    });
+    expect(catalog.get()).toBe(FALLBACK);
+    await flush();
+    expect(errors).toHaveLength(1);
+    now += 1;
   });
 });

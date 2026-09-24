@@ -69,3 +69,86 @@ export function buildClaudeCatalog(
     defaultModel: defaultRow ? concreteId(defaultRow) : first.id,
   };
 }
+
+export type LiveCatalog = {
+  // Never waits: the live catalog if one is cached, else the fallback.
+  get(): ProviderOption;
+  warm(): void;
+  // The list belongs to the signed-in account, so drop it when that changes.
+  invalidate(): void;
+};
+
+// The SDK answers in seconds and starts a process to do it, so reads only ever
+// see the cache and a refresh runs in the background.
+export function createLiveCatalog(deps: {
+  fallback: ProviderOption;
+  fetchRows: () => Promise<readonly SdkModelRow[]>;
+  ttlMs: number;
+  // Wait this long after a failure before trying again. A signed-out user
+  // would otherwise start a process on every catalog read.
+  retryMs: number;
+  now?: () => number;
+  onError?: (err: unknown) => void;
+}): LiveCatalog {
+  const now = deps.now ?? Date.now;
+  let live: ProviderOption | null = null;
+  let liveAt = 0;
+  let retryAt = 0;
+  // A fetch that began before an invalidate belongs to the previous account.
+  let generation = 0;
+  let inFlight: Promise<void> | null = null;
+
+  function start(): void {
+    const mine = generation;
+    const run = (async () => {
+      try {
+        const rows = await deps.fetchRows();
+        const catalog = buildClaudeCatalog(rows, deps.fallback);
+        if (!catalog) {
+          throw new Error("The SDK returned no models");
+        }
+        if (mine === generation) {
+          live = catalog;
+          liveAt = now();
+          retryAt = 0;
+        }
+      } catch (err) {
+        if (mine === generation) {
+          retryAt = now() + deps.retryMs;
+        }
+        deps.onError?.(err);
+      }
+    })();
+    inFlight = run;
+    void run.finally(() => {
+      if (inFlight === run) {
+        inFlight = null;
+      }
+    });
+  }
+
+  function refreshIfNeeded(): void {
+    if (inFlight || now() < retryAt) {
+      return;
+    }
+    if (live && now() - liveAt < deps.ttlMs) {
+      return;
+    }
+    start();
+  }
+
+  return {
+    get() {
+      refreshIfNeeded();
+      return live ?? deps.fallback;
+    },
+    warm: refreshIfNeeded,
+    invalidate() {
+      generation++;
+      live = null;
+      retryAt = 0;
+      inFlight = null;
+      start();
+    },
+  };
+}
