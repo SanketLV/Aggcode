@@ -41,16 +41,32 @@ export function findProvider(id: string): AgentProvider | undefined {
 
 // Each id was checked with a real SDK run. The previous claude-3-7-sonnet and
 // claude-3-5-* ids are rejected by the SDK as unknown models.
+const VERIFIED_EFFORT_LEVELS = ["low", "medium", "high", "max"];
+
 export const CLAUDE_CATALOG: ProviderOption = {
   id: "claude",
   name: "Claude Code",
   defaultModel: "claude-sonnet-5",
-  effortLevels: ["low", "medium", "high", "max"],
   models: [
-    { id: "claude-sonnet-5", name: "Claude Sonnet 5", supportsEffort: true },
-    { id: "claude-opus-5", name: "Claude Opus 5", supportsEffort: true },
+    {
+      id: "claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      supportsEffort: true,
+      effortLevels: VERIFIED_EFFORT_LEVELS,
+    },
+    {
+      id: "claude-opus-5",
+      name: "Claude Opus 5",
+      supportsEffort: true,
+      effortLevels: VERIFIED_EFFORT_LEVELS,
+    },
     { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", supportsEffort: false },
-    { id: "claude-opus-4-6", name: "Claude Opus 4.6", supportsEffort: true },
+    {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      supportsEffort: true,
+      effortLevels: VERIFIED_EFFORT_LEVELS,
+    },
   ],
 };
 
