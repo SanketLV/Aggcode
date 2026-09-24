@@ -1,5 +1,7 @@
 import { exec, spawn } from "child_process";
+import os from "node:os";
 import mongoose from "mongoose";
+import { isEffortLevel } from "commons/model-rules";
 import { ProviderConfigModel } from "db/client";
 import { query, type SDKResultError } from "@anthropic-ai/claude-agent-sdk";
 import type {
@@ -14,6 +16,7 @@ import {
   createWorkspaceMcpServer,
 } from "./workspaceContext";
 import { memoizeAsync } from "./authScope";
+import type { SdkModelRow } from "./claudeModels";
 import {
   decryptSecret,
   encryptSecret,
@@ -24,6 +27,60 @@ async function readStoredApiKey(): Promise<string | undefined> {
   const config = await ProviderConfigModel.findOne({ providerId: "claude" });
   const stored = config?.credentials?.get("apiKey");
   return stored ? decryptSecret(stored, loadOrCreateKey()) : undefined;
+}
+
+// The environment every Claude process runs in. A user signed in with a stored
+// API key has no CLI login, so anything that starts the process, including the
+// model list fetch, has to pass the key or it asks as nobody.
+async function claudeEnv(): Promise<Record<string, string | undefined>> {
+  let storedApiKey = process.env.ANTHROPIC_API_KEY;
+  if (mongoose.connection.readyState === 1) {
+    try {
+      storedApiKey = (await readStoredApiKey()) || storedApiKey;
+    } catch (err) {
+      console.warn("[claude] Could not read the stored API key:", err);
+    }
+  }
+
+  return {
+    ...process.env,
+    ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
+  };
+}
+
+const MODEL_FETCH_TIMEOUT_MS = 60_000;
+
+// Asks the SDK which models this account can use. That starts a Claude Code
+// process (several seconds), so callers cache the answer.
+export async function fetchSupportedModels(
+  timeoutMs = MODEL_FETCH_TIMEOUT_MS,
+): Promise<SdkModelRow[]> {
+  // A prompt that never yields keeps the process idle: the handshake is enough
+  // to ask for the model list, and no message ever reaches a model.
+  async function* idle(): AsyncGenerator<never> {
+    await new Promise<never>(() => {});
+  }
+
+  const q = query({
+    prompt: idle(),
+    // Outside the project, so its settings and CLAUDE.md are not loaded.
+    options: { cwd: os.tmpdir(), env: await claudeEnv() },
+  });
+
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`Timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+  });
+
+  try {
+    return await Promise.race([q.supportedModels(), timedOut]);
+  } finally {
+    clearTimeout(timer);
+    q.close();
+  }
 }
 
 // `claude auth status` takes ~2s on its own and far longer while the OpenCode
@@ -395,13 +452,7 @@ export class ClaudeProvider implements AgentProvider {
 
     const mcpServer = createWorkspaceMcpServer(workspaceId, sessionId);
 
-    const effortLevel =
-      effort === "low" ||
-      effort === "medium" ||
-      effort === "high" ||
-      effort === "max"
-        ? effort
-        : undefined;
+    const effortLevel = isEffortLevel(effort) ? effort : undefined;
 
     const abortController = signal ? new AbortController() : undefined;
     if (signal && abortController) {
@@ -410,19 +461,7 @@ export class ClaudeProvider implements AgentProvider {
       });
     }
 
-    let storedApiKey = process.env.ANTHROPIC_API_KEY;
-    if (mongoose.connection.readyState === 1) {
-      try {
-        storedApiKey = (await readStoredApiKey()) || storedApiKey;
-      } catch (err) {
-        console.warn("[claude] Could not read the stored API key:", err);
-      }
-    }
-
-    const envVars: Record<string, string | undefined> = {
-      ...process.env,
-      ...(storedApiKey ? { ANTHROPIC_API_KEY: storedApiKey } : {}),
-    };
+    const envVars = await claudeEnv();
 
     for await (const message of query({
       prompt: fullPrompt,
