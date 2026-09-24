@@ -1,3 +1,9 @@
+import {
+  DEFAULT_EFFORT_LEVELS,
+  findModel,
+  pickEffort,
+  type EffortLevel,
+} from "commons/model-rules";
 import type { ModelOption, ProviderOption } from "commons/types";
 
 // The fields of the SDK's ModelInfo that the catalog uses. Declared here
@@ -151,4 +157,36 @@ export function createLiveCatalog(deps: {
       start();
     },
   };
+}
+
+// Sessions saved before a model was retired still carry its id, and the SDK
+// rejects an unknown model outright, so anything the catalog does not offer
+// falls back to the provider default rather than failing the run.
+export function resolveModelId(
+  option: ProviderOption | undefined,
+  requested: string | undefined,
+): string | undefined {
+  if (!option || option.models.length === 0) {
+    return requested;
+  }
+  const match = findModel(option.models, requested);
+  if (match) {
+    return match.id;
+  }
+  return option.defaultModel || option.models[0]?.id;
+}
+
+// What a run sends to the SDK. The effort is chosen for the model that will
+// actually run, which is not always the one the session saved.
+export function resolveClaudeRun(
+  option: ProviderOption,
+  savedModel: string | undefined,
+  savedEffort: string | undefined,
+): { model: string | undefined; effort: EffortLevel | undefined } {
+  const model = resolveModelId(option, savedModel);
+  const row = option.models.find((m) => m.id === model);
+  const levels = row?.supportsEffort
+    ? (row.effortLevels ?? DEFAULT_EFFORT_LEVELS)
+    : undefined;
+  return { model, effort: pickEffort(levels, savedEffort) };
 }

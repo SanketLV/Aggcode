@@ -3,6 +3,8 @@ import type { ProviderOption } from "commons/types";
 import {
   buildClaudeCatalog,
   createLiveCatalog,
+  resolveClaudeRun,
+  resolveModelId,
   type SdkModelRow,
 } from "./claudeModels";
 
@@ -397,5 +399,109 @@ describe("createLiveCatalog", () => {
     await flush();
     expect(errors).toHaveLength(1);
     now += 1;
+  });
+});
+
+describe("resolveModelId", () => {
+  const live = buildClaudeCatalog(sdkRows, BASE) as ProviderOption;
+
+  test("keeps a saved id the catalog offers", () => {
+    expect(resolveModelId(live, "claude-opus-5")).toBe("claude-opus-5");
+  });
+
+  test("a saved undated Haiku id resolves to the dated row", () => {
+    expect(resolveModelId(live, "claude-haiku-4-5")).toBe(
+      "claude-haiku-4-5-20251001",
+    );
+  });
+
+  test("an id the catalog no longer offers falls back to the default", () => {
+    expect(resolveModelId(live, "claude-opus-4-6")).toBe("claude-sonnet-5");
+  });
+
+  test("nothing saved runs the default", () => {
+    expect(resolveModelId(live, undefined)).toBe("claude-sonnet-5");
+  });
+
+  test("the fallback catalog behaves the same way", () => {
+    expect(resolveModelId(FALLBACK, "claude-sonnet-5")).toBe("claude-sonnet-5");
+    expect(resolveModelId(FALLBACK, "claude-3-7-sonnet")).toBe(
+      "claude-sonnet-5",
+    );
+  });
+
+  test("a catalog with no models passes the request through", () => {
+    const empty: ProviderOption = { ...FALLBACK, models: [] };
+    expect(resolveModelId(empty, "claude-x")).toBe("claude-x");
+    expect(resolveModelId(undefined, "claude-x")).toBe("claude-x");
+  });
+});
+
+describe("resolveClaudeRun", () => {
+  const live = buildClaudeCatalog(sdkRows, BASE) as ProviderOption;
+
+  test("runs a saved model with a level it supports", () => {
+    expect(resolveClaudeRun(live, "claude-opus-5", "xhigh")).toEqual({
+      model: "claude-opus-5",
+      effort: "xhigh",
+    });
+  });
+
+  test("an unsupported level moves to the nearest supported one", () => {
+    const limited: ProviderOption = {
+      ...FALLBACK,
+      models: [
+        {
+          id: "claude-sonnet-5",
+          name: "Sonnet",
+          supportsEffort: true,
+          effortLevels: ["low", "medium", "high"],
+        },
+      ],
+    };
+    expect(resolveClaudeRun(limited, "claude-sonnet-5", "max")).toEqual({
+      model: "claude-sonnet-5",
+      effort: "high",
+    });
+  });
+
+  test("a model without effort support gets no effort", () => {
+    expect(resolveClaudeRun(live, "claude-haiku-4-5", "high")).toEqual({
+      model: "claude-haiku-4-5-20251001",
+      effort: undefined,
+    });
+  });
+
+  test("effort follows the model that actually runs, not the saved one", () => {
+    // claude-opus-4-6 is gone, so the default runs and its levels apply.
+    expect(resolveClaudeRun(live, "claude-opus-4-6", "xhigh")).toEqual({
+      model: "claude-sonnet-5",
+      effort: "xhigh",
+    });
+  });
+
+  test("a model that supports effort but lists no levels gets the verified four", () => {
+    const legacy: ProviderOption = {
+      ...FALLBACK,
+      models: [{ id: "claude-sonnet-5", name: "Sonnet", supportsEffort: true }],
+    };
+    expect(resolveClaudeRun(legacy, "claude-sonnet-5", "xhigh").effort).toBe(
+      "high",
+    );
+    expect(resolveClaudeRun(legacy, "claude-sonnet-5", "max").effort).toBe(
+      "max",
+    );
+  });
+
+  test("no saved effort sends none", () => {
+    expect(resolveClaudeRun(live, "claude-opus-5", undefined).effort).toBe(
+      undefined,
+    );
+  });
+
+  test("a stray effort string is never sent", () => {
+    expect(resolveClaudeRun(live, "claude-opus-5", "turbo").effort).toBe(
+      undefined,
+    );
   });
 });

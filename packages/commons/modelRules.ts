@@ -7,6 +7,15 @@ export const EFFORT_ORDER = ["low", "medium", "high", "xhigh", "max"] as const;
 
 export type EffortLevel = (typeof EFFORT_ORDER)[number];
 
+// What a model that supports effort but does not say which levels gets: the
+// four that were verified with real runs before the SDK reported levels.
+export const DEFAULT_EFFORT_LEVELS: readonly EffortLevel[] = [
+  "low",
+  "medium",
+  "high",
+  "max",
+];
+
 export function isEffortLevel(value: unknown): value is EffortLevel {
   return (
     typeof value === "string" &&
