@@ -7,7 +7,9 @@ import {
   MessagesSquare,
 } from "lucide-react";
 import { ICON_STROKE } from "../constants";
+import { findModel } from "commons/model-rules";
 import { composerHint, composerPlaceholder } from "../lib/composer";
+import { effortOptions, shownEffort } from "../lib/effort";
 import { useApp } from "../context/AppContext";
 import { send, partsOf } from "../lib/helpers";
 import type { ToolPart } from "../types";
@@ -27,13 +29,6 @@ const EXAMPLE_PROMPTS = [
   "Explain how this project is structured and where to start reading",
   "Run the tests and fix whatever is failing",
   "Find code that has no tests and add some for the riskiest part",
-];
-
-const EFFORTS = [
-  { value: "low", label: "Low effort" },
-  { value: "medium", label: "Medium effort" },
-  { value: "high", label: "High effort" },
-  { value: "max", label: "Max effort" },
 ];
 
 const CHIP_TRIGGER =
@@ -124,17 +119,22 @@ export function ChatPane() {
   // A session saved with a since-retired model would otherwise show a blank
   // picker; the backend runs such sessions on the default model too.
   const savedModel = active.session.model;
+  // Matched by the same rule the backend uses, so a session saved on an id the
+  // catalog now names with a date still shows the model it will run on.
   const currentModel =
-    (savedModel && availableModels.some((m) => m.id === savedModel)
-      ? savedModel
-      : undefined) ||
+    findModel(availableModels, savedModel)?.id ||
     providerInfo?.defaultModel ||
     availableModels[0]?.id ||
     "";
-  const currentEffort = active.session.effort || "high";
 
   const selectedModelInfo = availableModels.find((m) => m.id === currentModel);
-  const supportsEffort = selectedModelInfo?.supportsEffort ?? false;
+  const effortChoices = effortOptions(selectedModelInfo);
+  const supportsEffort = effortChoices.length > 0;
+  // The level a run will use for this model, not necessarily the saved one.
+  const currentEffort =
+    shownEffort(selectedModelInfo, active.session.effort) ||
+    active.session.effort ||
+    "high";
 
   const currentProviderAuth = providerAuth[currentProvider];
   const isCurrentProviderAuth = currentProviderAuth?.isAuthenticated ?? false;
@@ -160,15 +160,28 @@ export function ChatPane() {
     updateSessionConfig(active.session.id, {
       provider: newProvider,
       model: newModel,
-      effort: currentEffort,
+      effort: effortFor(targetProv?.models, newModel),
     });
   };
+
+  // The stored effort follows the model, so the config that is saved is the
+  // one that will run.
+  const effortFor = (
+    models: typeof availableModels | undefined,
+    modelId: string,
+  ) =>
+    shownEffort(
+      models?.find((m) => m.id === modelId),
+      active.session.effort,
+    ) ||
+    active.session.effort ||
+    "high";
 
   const handleModelChange = (newModel: string) => {
     updateSessionConfig(active.session.id, {
       provider: currentProvider,
       model: newModel,
-      effort: currentEffort,
+      effort: effortFor(availableModels, newModel),
     });
   };
 
@@ -439,7 +452,7 @@ export function ChatPane() {
                     <SelectValue placeholder="Effort" />
                   </SelectTrigger>
                   <SelectContent>
-                    {EFFORTS.map((e) => (
+                    {effortChoices.map((e) => (
                       <SelectItem
                         key={e.value}
                         value={e.value}
