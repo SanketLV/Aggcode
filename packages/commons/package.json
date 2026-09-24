@@ -5,6 +5,7 @@
   "private": true,
   "exports": {
     "./types": "./index.ts",
+    "./config": "./config.ts",
     "./model-rules": "./modelRules.ts"
   },
   "scripts": {

@@ -1,32 +1,27 @@
 import { serve } from "bun";
 import index from "./index.html";
+import { buildSocketConfig, resolveWebPort } from "./serverConfig";
+
+let socketConfig: ReturnType<typeof buildSocketConfig>;
+let webPort: number;
+try {
+  socketConfig = buildSocketConfig(process.env);
+  webPort = resolveWebPort(process.env);
+} catch (err) {
+  console.error(err instanceof Error ? err.message : err);
+  process.exit(1);
+}
 
 const server = serve({
-  port: 3001,
+  port: webPort,
   routes: {
     // Serve index.html for all unmatched routes.
     "/*": index,
 
-    "/api/hello": {
-      async GET(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "GET",
-        });
+    "/api/config": {
+      async GET() {
+        return Response.json(socketConfig);
       },
-      async PUT(req) {
-        return Response.json({
-          message: "Hello, world!",
-          method: "PUT",
-        });
-      },
-    },
-
-    "/api/hello/:name": async (req) => {
-      const name = req.params.name;
-      return Response.json({
-        message: `Hello, ${name}!`,
-      });
     },
   },
 
