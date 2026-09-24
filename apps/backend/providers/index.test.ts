@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import * as realChildProcess from "child_process";
+import * as realClaude from "./claude";
 
 // Record every shell command the providers run, and answer the status check
 // as a logged-in CLI. A real `claude auth logout` would sign the whole machine
@@ -21,8 +22,22 @@ mock.module("child_process", () => ({
   },
 }));
 
-const { CLAUDE_CATALOG, findProvider, getProvider, resolveModel } =
-  await import("./index");
+// Reading the catalog starts a background fetch, which would start a real
+// Claude Code process. Answer it from the test instead.
+let modelFetch: () => Promise<unknown[]> = () => new Promise(() => {});
+mock.module("./claude", () => ({
+  ...realClaude,
+  fetchSupportedModels: () => modelFetch(),
+}));
+
+const {
+  CLAUDE_CATALOG,
+  findProvider,
+  getClaudeCatalog,
+  getProvider,
+  invalidateClaudeCatalog,
+  resolveModel,
+} = await import("./index");
 
 describe("findProvider", () => {
   test("returns registered providers", () => {
@@ -77,6 +92,56 @@ describe("resolveModel", () => {
 
   test("passes the request through when the provider has no catalog entry", () => {
     expect(resolveModel(undefined, "anything")).toBe("anything");
+  });
+
+  // Sessions saved from the built-in list hold the undated Haiku id; the SDK's
+  // concrete id carries a date.
+  test("keeps a saved Haiku session on Haiku when the live id is dated", () => {
+    const live = {
+      ...option,
+      models: [
+        ...option.models,
+        { id: "claude-haiku-4-5-20251001", name: "Haiku" },
+      ],
+    };
+    expect(resolveModel(live, "claude-haiku-4-5")).toBe(
+      "claude-haiku-4-5-20251001",
+    );
+  });
+});
+
+describe("Claude live catalog", () => {
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test("serves the built-in catalog until the live list lands", async () => {
+    let land!: (rows: unknown[]) => void;
+    modelFetch = () => new Promise((resolve) => (land = resolve));
+    invalidateClaudeCatalog();
+
+    expect(getClaudeCatalog()).toBe(CLAUDE_CATALOG);
+
+    land([
+      {
+        value: "opus",
+        resolvedModel: "claude-opus-5",
+        displayName: "Opus",
+        supportsEffort: true,
+        supportedEffortLevels: ["low", "xhigh"],
+      },
+    ]);
+    await flush();
+
+    const live = getClaudeCatalog();
+    expect(live.models.map((m) => m.id)).toEqual(["claude-opus-5"]);
+    expect(live.models[0]?.effortLevels).toEqual(["low", "xhigh"]);
+  });
+
+  test("a failed fetch keeps serving the built-in catalog", async () => {
+    modelFetch = () => Promise.reject(new Error("claude: command not found"));
+    invalidateClaudeCatalog();
+    await flush();
+
+    expect(getClaudeCatalog()).toBe(CLAUDE_CATALOG);
   });
 });
 
