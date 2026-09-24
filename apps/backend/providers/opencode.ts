@@ -10,6 +10,7 @@ import {
   isValidSubProviderId,
   planOpenCodeLogout,
 } from "./authScope";
+import { buildModelOptions, parseModelRef } from "./openCodeModels";
 import { ensureOpenCodeServer } from "./serverManager";
 import type {
   AgentEvent,
@@ -326,29 +327,11 @@ export class OpenCodeProvider implements AgentProvider {
         return fallbackModels;
       }
 
-      const models: ModelOption[] = [];
-
-      // Look for opencode free models and any configured providers
-      for (const prov of providers.data.all) {
-        if (!prov.models) continue;
-        // Prioritize opencode free models, anthropic, openai, deepseek, or other major providers
-        const isPriorityProvider = [
-          "opencode",
-          "anthropic",
-          "openai",
-          "deepseek",
-        ].includes(prov.id);
-
-        if (isPriorityProvider) {
-          for (const [mId, mInfo] of Object.entries(prov.models)) {
-            models.push({
-              id: `${prov.id}/${mId}`,
-              name: `${prov.name}: ${mInfo.name || mId}`,
-              supportsEffort: mInfo.reasoning === true,
-            });
-          }
-        }
-      }
+      const models = buildModelOptions({
+        all: providers.data.all,
+        connected: providers.data.connected ?? [],
+        defaults: providers.data.default,
+      });
 
       return models.length > 0 ? models : fallbackModels;
     } catch (err) {
@@ -443,17 +426,7 @@ export class OpenCodeProvider implements AgentProvider {
     // Subscribe to SSE events BEFORE sending the prompt so we don't miss any.
     const { stream: eventStream } = await client.global.event();
 
-    let modelPayload: { providerID: string; modelID: string } | undefined;
-    if (model) {
-      if (model.includes("/")) {
-        const [provId, mId] = model.split("/");
-        if (provId && mId) {
-          modelPayload = { providerID: provId, modelID: mId };
-        }
-      } else {
-        modelPayload = { providerID: "opencode", modelID: model };
-      }
-    }
+    const modelPayload = model ? parseModelRef(model) : undefined;
 
     // Send prompt (non-blocking — returns immediately, AI runs in background).
     const promptPromise = client.session.prompt({
