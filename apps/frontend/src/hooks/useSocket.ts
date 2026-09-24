@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
-
-const SOCKET_URL = "ws://localhost:3000";
+import { loadSocketConfig } from "../lib/socketConfig";
 
 export type SocketStatus = "connecting" | "open" | "closed";
 
@@ -9,21 +8,42 @@ export function useSocket() {
   const [status, setStatus] = useState<SocketStatus>("connecting");
 
   useEffect(() => {
-    const socket = new WebSocket(SOCKET_URL);
+    let socket: WebSocket | undefined;
+    // Guards against setting state after unmount, e.g. if the component
+    // unmounts while loadSocketConfig's fetch is still in flight.
+    let cancelled = false;
 
-    // Exposed straight away so consumers can attach `onmessage` before the
-    // handshake completes and the server pushes its `init` snapshot.
-    setWs(socket);
+    loadSocketConfig()
+      .then(({ wsUrl }) => {
+        if (cancelled) {
+          return;
+        }
 
-    socket.onopen = () => setStatus("open");
-    socket.onclose = () => setStatus("closed");
-    socket.onerror = () => setStatus("closed");
+        socket = new WebSocket(wsUrl);
+
+        // Exposed straight away so consumers can attach `onmessage` before
+        // the handshake completes and the server pushes its `init` snapshot.
+        setWs(socket);
+
+        socket.onopen = () => setStatus("open");
+        socket.onclose = () => setStatus("closed");
+        socket.onerror = () => setStatus("closed");
+      })
+      .catch((err) => {
+        console.error("Failed to load socket config:", err);
+        if (!cancelled) {
+          setStatus("closed");
+        }
+      });
 
     return () => {
-      socket.onopen = null;
-      socket.onclose = null;
-      socket.onerror = null;
-      socket.close();
+      cancelled = true;
+      if (socket) {
+        socket.onopen = null;
+        socket.onclose = null;
+        socket.onerror = null;
+        socket.close();
+      }
     };
   }, []);
 
