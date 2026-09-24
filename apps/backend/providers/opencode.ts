@@ -90,19 +90,16 @@ async function listExternalConnected(): Promise<string[]> {
   );
 }
 
+// Throws when the database cannot answer. Reporting `false` instead would show
+// an opted-in user as signed out and lock them out of chat.
 async function readLocalOptIn(): Promise<boolean> {
   if (mongoose.connection.readyState !== 1) {
-    return false;
+    throw new Error("The database is not connected");
   }
-  try {
-    const config = await ProviderConfigModel.findOne({
-      providerId: "opencode",
-    });
-    return config?.authMethod === LOCAL_METHOD_ID;
-  } catch (err) {
-    console.warn("[opencode auth] Could not read the opt-in:", err);
-    return false;
-  }
+  const config = await ProviderConfigModel.findOne({
+    providerId: "opencode",
+  });
+  return config?.authMethod === LOCAL_METHOD_ID;
 }
 
 // After a full sign-out the user can still show as signed in through a
@@ -161,10 +158,9 @@ export class OpenCodeProvider implements AgentProvider {
     ],
 
     getAuthStatus: async (): Promise<ProviderAuthStatus> => {
+      let externalConnected: string[];
       try {
-        const externalConnected = await listExternalConnected();
-        const optedIn = await readLocalOptIn();
-        return resolveOpenCodeStatus({ externalConnected, optedIn });
+        externalConnected = await listExternalConnected();
       } catch (err) {
         return {
           providerId: "opencode",
@@ -175,6 +171,11 @@ export class OpenCodeProvider implements AgentProvider {
           }`,
         };
       }
+
+      // Outside the try on purpose: a database error must surface as a failed
+      // status check, not as "server offline" or a silent "signed out".
+      const optedIn = await readLocalOptIn();
+      return resolveOpenCodeStatus({ externalConnected, optedIn });
     },
 
     login: async ({
@@ -332,39 +333,24 @@ export class OpenCodeProvider implements AgentProvider {
         };
       }
 
-      // Only Aggcode's own record of the choice, so OpenCode itself is untouched.
-      if (clearOptIn) {
-        await ProviderConfigModel.updateOne(
-          { providerId: "opencode" },
-          { $unset: { authMethod: "" } },
-        );
-      }
-
-      if (remove.length === 0) {
-        return {
-          success: true,
-          message: clearOptIn
-            ? `Stopped using OpenCode as installed.${await outsideConnectionsNote()}`
-            : "Aggcode has not connected any providers to OpenCode.",
-        };
-      }
-
-      const baseUrl = await ensureOpenCodeServer();
-      const client = createOpencodeClientV2({ baseUrl });
       const removed: string[] = [];
       const failed: string[] = [];
-      for (const id of remove) {
-        const res = await client.auth.remove({ providerID: id });
-        if (res.error) {
-          console.warn(`[opencode auth] Failed to remove ${id}:`, res.error);
-          failed.push(id);
-          continue;
+      if (remove.length > 0) {
+        const baseUrl = await ensureOpenCodeServer();
+        const client = createOpencodeClientV2({ baseUrl });
+        for (const id of remove) {
+          const res = await client.auth.remove({ providerID: id });
+          if (res.error) {
+            console.warn(`[opencode auth] Failed to remove ${id}:`, res.error);
+            failed.push(id);
+            continue;
+          }
+          await ProviderConfigModel.updateOne(
+            { providerId: "opencode" },
+            { $unset: { [`credentials.${id}`]: "" } },
+          );
+          removed.push(id);
         }
-        await ProviderConfigModel.updateOne(
-          { providerId: "opencode" },
-          { $unset: { [`credentials.${id}`]: "" } },
-        );
-        removed.push(id);
       }
 
       if (failed.length > 0) {
@@ -375,11 +361,29 @@ export class OpenCodeProvider implements AgentProvider {
           }`,
         };
       }
+      // Last, so a failed removal above leaves the opt-in in place and the
+      // sign-out can simply be retried. It is only Aggcode's own record of the
+      // choice, so OpenCode itself is untouched.
+      if (clearOptIn) {
+        await ProviderConfigModel.updateOne(
+          { providerId: "opencode" },
+          { $unset: { authMethod: "" } },
+        );
+      }
+
+      const parts: string[] = [];
+      if (removed.length > 0) {
+        parts.push(`Disconnected ${removed.join(", ")} from OpenCode.`);
+      }
+      if (clearOptIn) {
+        parts.push("Stopped using OpenCode as installed.");
+        parts.push((await outsideConnectionsNote()).trim());
+      }
       return {
         success: true,
-        message: `Disconnected ${removed.join(", ")} from OpenCode.${
-          clearOptIn ? await outsideConnectionsNote() : ""
-        }`,
+        message:
+          parts.filter(Boolean).join(" ") ||
+          "Aggcode has not connected any providers to OpenCode.",
       };
     },
   };

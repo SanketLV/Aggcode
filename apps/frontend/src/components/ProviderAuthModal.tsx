@@ -272,7 +272,7 @@ export function ProviderAuthModal() {
           {authMethods.length > 0 && (
             <div className="space-y-4">
               <div className="text-xs font-medium text-foreground">
-                {isAuthenticated ? "Update credentials" : "Sign in"}
+                {isAuthenticated ? "Change sign-in" : "Sign in"}
               </div>
 
               {/* Method Picker if multiple */}
