@@ -54,7 +54,12 @@ const MODEL_FETCH_TIMEOUT_MS = 60_000;
 // process (several seconds), so callers cache the answer.
 export async function fetchSupportedModels(
   timeoutMs = MODEL_FETCH_TIMEOUT_MS,
+  signal?: AbortSignal,
 ): Promise<SdkModelRow[]> {
+  if (signal?.aborted) {
+    throw new Error("Fetch cancelled");
+  }
+
   // A prompt that never yields keeps the process idle: the handshake is enough
   // to ask for the model list, and no message ever reaches a model.
   async function* idle(): AsyncGenerator<never> {
@@ -75,8 +80,17 @@ export async function fetchSupportedModels(
     );
   });
 
+  const cancelled = new Promise<never>((_, reject) => {
+    const fail = () => reject(new Error("Fetch cancelled"));
+    if (signal?.aborted) {
+      fail();
+    } else {
+      signal?.addEventListener("abort", fail, { once: true });
+    }
+  });
+
   try {
-    return await Promise.race([q.supportedModels(), timedOut]);
+    return await Promise.race([q.supportedModels(), timedOut, cancelled]);
   } finally {
     clearTimeout(timer);
     q.close();

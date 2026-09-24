@@ -35,8 +35,10 @@ export function effortOptions(
     .map((value) => ({ value, label: EFFORT_LABELS[value] }));
 }
 
-// The level a run will use for this model, decided by the same rule the
-// backend applies, so the picker never shows a level that will not run.
+// The level to show for this model, chosen by the same rule the backend uses
+// for a saved level, so a saved level that will not run is never displayed.
+// With nothing saved the picker shows "high", as it always has; the backend
+// then sends no level and the SDK applies its own default.
 export function shownEffort(
   model: ModelOption | undefined,
   saved: string | undefined,

@@ -190,6 +190,7 @@ const FALLBACK: ProviderOption = {
 
 const TTL = 10 * 60_000;
 const RETRY = 60_000;
+const MAX_RETRY = 4 * RETRY;
 
 function harness(
   fetches: Array<ReturnType<typeof deferred<readonly SdkModelRow[]>>>,
@@ -197,9 +198,11 @@ function harness(
   let now = 1_000_000;
   let calls = 0;
   const errors: unknown[] = [];
+  const signals: AbortSignal[] = [];
   const catalog = createLiveCatalog({
     fallback: FALLBACK,
-    fetchRows: () => {
+    fetchRows: (signal) => {
+      signals.push(signal);
       const next = fetches[calls];
       calls++;
       if (!next) {
@@ -209,12 +212,14 @@ function harness(
     },
     ttlMs: TTL,
     retryMs: RETRY,
+    maxRetryMs: MAX_RETRY,
     now: () => now,
     onError: (err) => errors.push(err),
   });
   return {
     catalog,
     errors,
+    signals,
     calls: () => calls,
     advance: (ms: number) => {
       now += ms;
@@ -376,9 +381,11 @@ describe("createLiveCatalog", () => {
 
     fresh.resolve(sdkRows.slice(3));
     await flush();
+    // claude-sonnet-5 is not in the fresh list, so the built-in row stays.
     expect(h.catalog.get().models.map((m) => m.id)).toEqual([
       "claude-opus-5",
       "claude-haiku-4-5-20251001",
+      "claude-sonnet-5",
     ]);
   });
 
@@ -392,6 +399,7 @@ describe("createLiveCatalog", () => {
       },
       ttlMs: TTL,
       retryMs: RETRY,
+      maxRetryMs: MAX_RETRY,
       now: () => now,
       onError: (err) => errors.push(err),
     });
@@ -399,6 +407,169 @@ describe("createLiveCatalog", () => {
     await flush();
     expect(errors).toHaveLength(1);
     now += 1;
+  });
+});
+
+describe("buildClaudeCatalog with built-in models", () => {
+  const builtIn = [
+    {
+      id: "claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      supportsEffort: true,
+      effortLevels: ["low", "medium", "high", "max"],
+    },
+    { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", supportsEffort: false },
+    {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      supportsEffort: true,
+      effortLevels: ["low", "medium", "high", "max"],
+    },
+  ];
+
+  // The SDK stopped listing Opus 4.6, but a real run showed it still works, so
+  // sessions saved on it keep running on it.
+  test("keeps a built-in model the SDK no longer lists, after the live ones", () => {
+    const ids = buildClaudeCatalog(sdkRows, BASE, builtIn)?.models.map(
+      (m) => m.id,
+    );
+    expect(ids).toEqual([
+      "claude-sonnet-5",
+      "claude-fable-5-1",
+      "claude-opus-5",
+      "claude-haiku-4-5-20251001",
+      "claude-opus-4-6",
+    ]);
+  });
+
+  test("does not repeat a built-in model the live list already covers", () => {
+    const ids =
+      buildClaudeCatalog(sdkRows, BASE, builtIn)?.models.map((m) => m.id) ?? [];
+    // claude-haiku-4-5 is the undated form of the live Haiku row
+    expect(ids.filter((id) => id.startsWith("claude-haiku"))).toEqual([
+      "claude-haiku-4-5-20251001",
+    ]);
+    expect(ids.filter((id) => id === "claude-sonnet-5")).toHaveLength(1);
+  });
+
+  test("the built-in rows never change the default", () => {
+    expect(buildClaudeCatalog(sdkRows, BASE, builtIn)?.defaultModel).toBe(
+      "claude-sonnet-5",
+    );
+  });
+
+  test("an empty live list stays unavailable even with built-in models", () => {
+    expect(buildClaudeCatalog([], BASE, builtIn)).toBeUndefined();
+  });
+});
+
+describe("createLiveCatalog cancellation and backoff", () => {
+  test("invalidate cancels the fetch it replaces", () => {
+    const h = harness([deferred(), deferred()]);
+    h.catalog.get();
+    const [first] = h.signals;
+    expect(first?.aborted).toBe(false);
+
+    h.catalog.invalidate();
+    expect(first?.aborted).toBe(true);
+    expect(h.signals[1]?.aborted).toBe(false);
+  });
+
+  test("the failure of a cancelled fetch is not reported", async () => {
+    const stale = deferred<readonly SdkModelRow[]>();
+    const h = harness([stale, deferred()]);
+    h.catalog.get();
+    h.catalog.invalidate();
+
+    stale.reject(new Error("Fetch cancelled"));
+    await flush();
+    expect(h.errors).toHaveLength(0);
+  });
+
+  // A signed-out user would otherwise start a process every minute forever.
+  test("each further failure waits twice as long, up to the cap", async () => {
+    const d = [1, 2, 3, 4, 5].map(() => deferred<readonly SdkModelRow[]>());
+    const h = harness(d);
+
+    h.catalog.get();
+    d[0]?.reject(new Error("no"));
+    await flush();
+    h.advance(RETRY - 1);
+    h.catalog.get();
+    expect(h.calls()).toBe(1);
+    h.advance(1);
+    h.catalog.get();
+    expect(h.calls()).toBe(2);
+
+    d[1]?.reject(new Error("no"));
+    await flush();
+    h.advance(2 * RETRY - 1);
+    h.catalog.get();
+    expect(h.calls()).toBe(2);
+    h.advance(1);
+    h.catalog.get();
+    expect(h.calls()).toBe(3);
+
+    d[2]?.reject(new Error("no"));
+    await flush();
+    h.advance(4 * RETRY - 1);
+    h.catalog.get();
+    expect(h.calls()).toBe(3);
+    h.advance(1);
+    h.catalog.get();
+    expect(h.calls()).toBe(4);
+
+    // the wait is capped at MAX_RETRY (4 * RETRY), not 8 * RETRY
+    d[3]?.reject(new Error("no"));
+    await flush();
+    h.advance(MAX_RETRY);
+    h.catalog.get();
+    expect(h.calls()).toBe(5);
+  });
+
+  test("a success starts the wait over", async () => {
+    const d = [1, 2, 3, 4].map(() => deferred<readonly SdkModelRow[]>());
+    const h = harness(d);
+
+    h.catalog.get();
+    d[0]?.reject(new Error("no"));
+    await flush();
+    h.advance(RETRY);
+    h.catalog.get();
+    d[1]?.resolve(sdkRows);
+    await flush();
+
+    h.advance(TTL + 1);
+    h.catalog.get();
+    d[2]?.reject(new Error("no"));
+    await flush();
+
+    // back to one RETRY, not the two the earlier failure would have doubled to
+    h.advance(RETRY);
+    h.catalog.get();
+    expect(h.calls()).toBe(4);
+  });
+
+  test("invalidate starts the wait over", async () => {
+    const d = [1, 2, 3, 4].map(() => deferred<readonly SdkModelRow[]>());
+    const h = harness(d);
+
+    h.catalog.get();
+    d[0]?.reject(new Error("no"));
+    await flush();
+    h.advance(RETRY);
+    h.catalog.get();
+    d[1]?.reject(new Error("no"));
+    await flush();
+
+    h.catalog.invalidate();
+    expect(h.calls()).toBe(3);
+    d[2]?.reject(new Error("no"));
+    await flush();
+
+    h.advance(RETRY);
+    h.catalog.get();
+    expect(h.calls()).toBe(4);
   });
 });
 

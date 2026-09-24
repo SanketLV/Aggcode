@@ -131,8 +131,15 @@ describe("Claude live catalog", () => {
     ]);
     await flush();
 
+    // The live row leads. The built-in models the SDK did not list stay after
+    // it, because a run showed the SDK still accepts them.
     const live = getClaudeCatalog();
-    expect(live.models.map((m) => m.id)).toEqual(["claude-opus-5"]);
+    expect(live.models.map((m) => m.id)).toEqual([
+      "claude-opus-5",
+      "claude-sonnet-5",
+      "claude-haiku-4-5",
+      "claude-opus-4-6",
+    ]);
     expect(live.models[0]?.effortLevels).toEqual(["low", "xhigh"]);
   });
 

@@ -74,6 +74,36 @@ describe("fetchSupportedModels", () => {
     expect(closed).toBe(1);
   });
 
+  test("cancelling stops the wait and closes the process", async () => {
+    let closed = 0;
+    makeQuery = () => ({
+      supportedModels: () => new Promise(() => {}),
+      close: () => {
+        closed++;
+      },
+    });
+
+    const controller = new AbortController();
+    const pending = fetchSupportedModels(60_000, controller.signal);
+    controller.abort();
+
+    await expect(pending).rejects.toThrow(/cancel/i);
+    expect(closed).toBe(1);
+  });
+
+  test("an already-cancelled signal never starts a process", async () => {
+    makeQuery = () => {
+      throw new Error("a process was started");
+    };
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      fetchSupportedModels(60_000, controller.signal),
+    ).rejects.toThrow(/cancel/i);
+    expect(queries).toHaveLength(0);
+  });
+
   test("never sends a prompt, so no message reaches a model", async () => {
     makeQuery = () => ({
       supportedModels: async () => [{ value: "x", displayName: "X" }],

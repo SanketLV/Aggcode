@@ -26,11 +26,16 @@ function concreteId(row: SdkModelRow): string {
   return row.resolvedModel ?? row.value;
 }
 
+// `builtIn` are models that were verified with a real run. One the SDK no
+// longer lists stays after the live rows, because the SDK still accepts it
+// (Opus 4.6 does) and sessions saved on it should keep running on it.
+//
 // Returns undefined for an empty list so the caller keeps serving the verified
 // fallback instead of showing an empty picker.
 export function buildClaudeCatalog(
   rows: readonly SdkModelRow[],
   provider: { id: string; name: string },
+  builtIn: readonly ModelOption[] = [],
 ): ProviderOption | undefined {
   const defaultRow = rows.find((r) => r.value === DEFAULT_ROW_VALUE);
 
@@ -68,6 +73,12 @@ export function buildClaudeCatalog(
     return undefined;
   }
 
+  for (const legacy of builtIn) {
+    if (!findModel(models, legacy.id)) {
+      models.push(legacy);
+    }
+  }
+
   return {
     id: provider.id,
     name: provider.name,
@@ -88,11 +99,15 @@ export type LiveCatalog = {
 // see the cache and a refresh runs in the background.
 export function createLiveCatalog(deps: {
   fallback: ProviderOption;
-  fetchRows: () => Promise<readonly SdkModelRow[]>;
+  // The signal is aborted when the fetch is replaced, so the process it
+  // started does not outlive the answer nobody wants any more.
+  fetchRows: (signal: AbortSignal) => Promise<readonly SdkModelRow[]>;
   ttlMs: number;
-  // Wait this long after a failure before trying again. A signed-out user
-  // would otherwise start a process on every catalog read.
+  // Wait this long after a failure before trying again, doubling with each
+  // further failure up to maxRetryMs. A signed-out user would otherwise start
+  // a process every minute for as long as the app is open.
   retryMs: number;
+  maxRetryMs: number;
   now?: () => number;
   onError?: (err: unknown) => void;
 }): LiveCatalog {
@@ -100,16 +115,24 @@ export function createLiveCatalog(deps: {
   let live: ProviderOption | null = null;
   let liveAt = 0;
   let retryAt = 0;
+  let failures = 0;
   // A fetch that began before an invalidate belongs to the previous account.
   let generation = 0;
   let inFlight: Promise<void> | null = null;
+  let current: AbortController | null = null;
 
   function start(): void {
     const mine = generation;
+    const controller = new AbortController();
+    current = controller;
     const run = (async () => {
       try {
-        const rows = await deps.fetchRows();
-        const catalog = buildClaudeCatalog(rows, deps.fallback);
+        const rows = await deps.fetchRows(controller.signal);
+        const catalog = buildClaudeCatalog(
+          rows,
+          deps.fallback,
+          deps.fallback.models,
+        );
         if (!catalog) {
           throw new Error("The SDK returned no models");
         }
@@ -117,12 +140,17 @@ export function createLiveCatalog(deps: {
           live = catalog;
           liveAt = now();
           retryAt = 0;
+          failures = 0;
         }
       } catch (err) {
+        // A replaced fetch failing is expected, not worth a warning.
         if (mine === generation) {
-          retryAt = now() + deps.retryMs;
+          failures++;
+          retryAt =
+            now() +
+            Math.min(deps.retryMs * 2 ** (failures - 1), deps.maxRetryMs);
+          deps.onError?.(err);
         }
-        deps.onError?.(err);
       }
     })();
     inFlight = run;
@@ -150,9 +178,11 @@ export function createLiveCatalog(deps: {
     },
     warm: refreshIfNeeded,
     invalidate() {
+      current?.abort();
       generation++;
       live = null;
       retryAt = 0;
+      failures = 0;
       inFlight = null;
       start();
     },
