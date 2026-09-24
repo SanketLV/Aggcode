@@ -105,11 +105,29 @@ type ModelOption = {
 
 ## Open questions
 
-1. **Names.** SDK `displayName` is just "Sonnet", "Opus", "Fable"; the hardcoded list says "Claude Sonnet 5". Plain SDK names hide the version. Options: SDK name alone, SDK name plus the concrete id as a secondary label (the nice-to-have), or keep our own display names in a map for known ids. Proposed default: SDK name, with the id as the secondary label.
-2. **`[1m]`: answered by the docs, confirmed by a real run in AC-6.** The Claude Code model docs say `[1m]` selects the 1M-token context window, and that Fable 5.1, Fable 5, Sonnet 5 and Opus 4.7 and later already run with the 1M window on the Anthropic API, with no `[1m]` variant to select. So the concrete id `claude-fable-5-1` (no suffix) is the right id. The public `anthropics/claude-code` repo holds docs, plugins and issues, not the application source, so the docs are the reference.
-3. **Opus 4.6.** The docs say Claude Code recognises any name starting with `claude-` on the Anthropic API, so an explicit `claude-opus-4-6` probably still works even though the SDK no longer lists it. Whether the API still serves it is settled by a real run; if it does, it can stay as a legacy row instead of being dropped.
+1. **Names.** The SDK `displayName` is just "Sonnet", "Opus", "Fable"; the hardcoded list says "Claude Sonnet 5". Plain SDK names hide the version. Built with the SDK name; the concrete id as a secondary label is still the nice-to-have.
+
+## Answered by real runs (2026-09-24, Claude Code 2.1.250, one tiny prompt each, no tools)
+
+| id | effort | result |
+|---|---|---|
+| `claude-sonnet-5` | none | runs |
+| `claude-opus-5` | `xhigh` | runs, so `xhigh` is accepted |
+| `claude-haiku-4-5-20251001` | none | runs |
+| `claude-haiku-4-5` (undated) | none | runs, so the date-suffix match loses nothing |
+| `claude-opus-4-6` | none | **runs**, although the SDK no longer lists it |
+| `claude-fable-5` | `xhigh` | recognised, but fails for this account: "Fable 5 requires usage credits" |
+| `claude-fable-5-1` | none | rejected: "Claude Code 2.1.250 does not support this model; version 2.1.251 or newer is required" |
+
+What that decided:
+
+- **Opus 4.6 is kept**, as a legacy row after the live ones, because it still runs. Dropping it would have moved saved sessions to the default for no reason. The rule is general: a built-in model the live list does not cover stays after the live rows.
+- **`[1m]` is settled by the docs**: Fable 5.1, Fable 5, Sonnet 5 and Opus 4.7 and later run with the 1M window by default on the Anthropic API, so no suffix is needed. The public `anthropics/claude-code` repo holds docs, plugins and issues, not the application source, so the docs are the reference.
+- **The live list is not an entitlement check.** The SDK lists Fable, but a run on an account without usage credits fails. The picker offers it and the run reports the provider's message; the app does not try to predict this.
+- **The list changes between runs.** The first list named Fable `claude-fable-5-1`; a later one named it `claude-fable-5`, and only the latter works with the installed CLI. This is the case for reading the list live instead of guessing ids.
 
 ## Risks
 
 - **The live list is only as fresh as the installed SDK and CLI.** The docs list `opus` as Opus 5.5 while the installed SDK (0.3.250) resolved `opus` to `claude-opus-5`. Upgrading `@anthropic-ai/claude-agent-sdk` is what moves the live list forward; the picker will not show models newer than the CLI it asks.
+- **The picker can offer a model the account cannot run** (Fable without usage credits). The error is the provider's own message.
 - **Aliases track, ids pin.** The docs say aliases update over time and full model names pin a version. Concrete ids therefore keep a session on the model it chose; it will not move to a newer one on its own.
