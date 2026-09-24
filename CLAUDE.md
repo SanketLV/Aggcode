@@ -43,7 +43,7 @@ The backend requires `apps/backend/.env` with `DB_URL=<mongodb connection string
 
 The backend and the frontend server used to have their addresses hardcoded (`ws://localhost:3000`, port `3000`, port `3001`). They're now resolved from environment variables, each with a pure resolver function so the rules are unit-tested without starting a process:
 
-- **Backend** (`apps/backend/config.ts`, `resolveServerConfig`): `AGGCODE_HOST` (default `127.0.0.1`, loopback only — no auth yet, so anything else is a deliberate, warned-about choice) and `AGGCODE_PORT` (default `3000`; `0` asks the OS for any free port). `apps/backend/server.ts`'s `startServer({host, port, onConnection})` binds and resolves `{port, close}` once actually listening, or rejects with a typed `ServerStartError` (`kind: "in-use" | "denied" | "other"`) — `index.ts` turns that into a logged message and a non-zero exit, never a silent hang.
+- **Backend** (`apps/backend/config.ts`, `resolveServerConfig`): `AGGCODE_HOST` (default `127.0.0.1`. There is no auth yet, so any other value is allowed but logs a warning that the agent is reachable from other machines) and `AGGCODE_PORT` (default `3000`; `0` asks the OS for any free port). `apps/backend/server.ts`'s `startServer({host, port, onConnection})` binds and resolves `{port, close}` once actually listening, or rejects with a typed `ServerStartError` (`kind: "in-use" | "denied" | "other"`) — `index.ts` turns that into a logged message and a non-zero exit, never a silent hang.
 - **Frontend server** (`apps/frontend/src/serverConfig.ts`): `buildSocketConfig(env)` returns `{wsUrl}` for the `/api/config` route the browser fetches — `AGGCODE_BACKEND_URL` (a full `ws://`/`wss://` URL) wins outright if set, else it's built from `AGGCODE_PORT` (default `3000`; `0` is rejected here, since this process has no way to know which port the backend's OS actually picked). `resolveWebPort(env)` reads `AGGCODE_WEB_PORT` (default `3001`) for the frontend server's own port.
 - **Browser** (`apps/frontend/src/lib/socketConfig.ts`): `loadSocketConfig()` prefers `window.__AGGCODE_CONFIG__` (set by Electron's preload script once that exists) and only falls back to fetching `/api/config` when it's absent; either path is validated with `parseSocketConfig` before `useSocket` trusts it. Any failure — network error, non-200, non-JSON, wrong shape — leaves `useSocket` in `closed` rather than stuck `connecting`.
 
@@ -107,7 +107,7 @@ Not Next.js. `src/index.ts` is a `Bun.serve` that serves `src/index.html` for `/
 - `context/AppContext.tsx` — owns all state (`workspaces`, `activeSessionId`, `openWorkspaceId`, run state, provider auth) and the single `socket.onmessage` switch, and provides it through `useApp()`. `App.tsx` only lays out the components. Components send through the `send(socket, message)` helper in `lib/helpers.ts`, which is typed to `IncomingMessageType`, no-ops unless the socket is `OPEN`, and returns whether it sent.
 - Tailwind v4 through `bun-plugin-tailwind` (wired in `bunfig.toml` for dev and `build.ts` for prod). **There is no `tailwind.config`** — theme lives in CSS (`src/index.css`, `styles/globals.css`).
 - shadcn/ui, `new-york` style, `neutral` base, lucide icons (`components.json`). Components land in `src/components/ui/`. Path alias `@/*` → `./src/*`.
-- `/api/hello` routes in `src/index.ts` are leftover template scaffolding, unused.
+- The `/api/hello` template routes were removed from `src/index.ts`. Besides the `/*` catch-all, its only route is `/api/config`.
 
 ### Dead scaffolding from `create-turbo`
 
