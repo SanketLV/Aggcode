@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import { isLoopbackHost, resolveServerConfig } from "./config";
 import { ServerStartError, startServer } from "./server";
 import { UserManager } from "./UserManager";
+import { warmClaudeCatalog } from "./providers";
 
 async function main() {
   // Resolved before touching Mongo, so a bad AGGCODE_PORT fails fast instead
@@ -27,6 +28,11 @@ async function main() {
     console.error(err);
     process.exit(1);
   }
+
+  // After the connect: the fetch needs the API key stored in Mongo. Not
+  // awaited, since the model list takes seconds and the picker has a
+  // fallback until it lands.
+  warmClaudeCatalog();
 
   try {
     const server = await startServer({

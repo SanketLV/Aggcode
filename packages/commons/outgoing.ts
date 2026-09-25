@@ -132,6 +132,9 @@ export type ModelOption = {
   id: string;
   name: string;
   supportsEffort?: boolean;
+  // The levels this model supports. Absent means the picker's usual four,
+  // which is what models from providers that do not report levels get.
+  effortLevels?: string[];
 };
 
 export type ProviderOption = {
@@ -139,7 +142,6 @@ export type ProviderOption = {
   name: string;
   models: ModelOption[];
   defaultModel: string;
-  effortLevels?: string[];
 };
 
 export type AuthField = {

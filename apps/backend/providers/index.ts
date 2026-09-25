@@ -1,7 +1,9 @@
+import { DEFAULT_EFFORT_LEVELS } from "commons/model-rules";
 import type { ProviderOption } from "commons/types";
 import type { AgentProvider } from "./types";
 import { buildAuthSnapshot } from "./authScope";
-import { ClaudeProvider } from "./claude";
+import { ClaudeProvider, fetchSupportedModels } from "./claude";
+import { createLiveCatalog, resolveModelId } from "./claudeModels";
 import { OpenCodeProvider } from "./opencode";
 
 export type {
@@ -45,14 +47,54 @@ export const CLAUDE_CATALOG: ProviderOption = {
   id: "claude",
   name: "Claude Code",
   defaultModel: "claude-sonnet-5",
-  effortLevels: ["low", "medium", "high", "max"],
   models: [
-    { id: "claude-sonnet-5", name: "Claude Sonnet 5", supportsEffort: true },
-    { id: "claude-opus-5", name: "Claude Opus 5", supportsEffort: true },
+    {
+      id: "claude-sonnet-5",
+      name: "Claude Sonnet 5",
+      supportsEffort: true,
+      effortLevels: [...DEFAULT_EFFORT_LEVELS],
+    },
+    {
+      id: "claude-opus-5",
+      name: "Claude Opus 5",
+      supportsEffort: true,
+      effortLevels: [...DEFAULT_EFFORT_LEVELS],
+    },
     { id: "claude-haiku-4-5", name: "Claude Haiku 4.5", supportsEffort: false },
-    { id: "claude-opus-4-6", name: "Claude Opus 4.6", supportsEffort: true },
+    {
+      id: "claude-opus-4-6",
+      name: "Claude Opus 4.6",
+      supportsEffort: true,
+      effortLevels: [...DEFAULT_EFFORT_LEVELS],
+    },
   ],
 };
+
+// How long a fetched list is trusted, and how long to wait after a failed
+// fetch before trying again.
+const CLAUDE_CATALOG_TTL_MS = 10 * 60_000;
+const CLAUDE_CATALOG_RETRY_MS = 60_000;
+const CLAUDE_CATALOG_MAX_RETRY_MS = 15 * 60_000;
+
+// The SDK's own list for the signed-in account, cached off the request path.
+// CLAUDE_CATALOG is what is served until a live list exists, and whenever
+// fetching one fails.
+const claudeLiveCatalog = createLiveCatalog({
+  fallback: CLAUDE_CATALOG,
+  fetchRows: (signal) => fetchSupportedModels(undefined, signal),
+  ttlMs: CLAUDE_CATALOG_TTL_MS,
+  retryMs: CLAUDE_CATALOG_RETRY_MS,
+  maxRetryMs: CLAUDE_CATALOG_MAX_RETRY_MS,
+  onError: (err) =>
+    console.warn(
+      "[claude] Could not fetch the live model list, using the built-in one:",
+      err,
+    ),
+});
+
+export const getClaudeCatalog = () => claudeLiveCatalog.get();
+export const warmClaudeCatalog = () => claudeLiveCatalog.warm();
+export const invalidateClaudeCatalog = () => claudeLiveCatalog.invalidate();
 
 export function getAllProviders(): AgentProvider[] {
   return Array.from(providerRegistry.values());
@@ -82,24 +124,10 @@ export async function getProviderCatalog(): Promise<ProviderOption[]> {
         models,
       });
     } else if (provider.id === "claude") {
-      catalog.push(CLAUDE_CATALOG);
+      catalog.push(getClaudeCatalog());
     }
   }
   return catalog;
 }
 
-// Sessions saved before a model was retired still carry its id, and the SDK
-// rejects an unknown model outright, so anything off the catalog falls back to
-// the provider default rather than failing the run.
-export function resolveModel(
-  option: ProviderOption | undefined,
-  requested: string | undefined,
-): string | undefined {
-  if (!option || option.models.length === 0) {
-    return requested;
-  }
-  if (requested && option.models.some((m) => m.id === requested)) {
-    return requested;
-  }
-  return option.defaultModel || option.models[0]?.id;
-}
+export { resolveModelId as resolveModel } from "./claudeModels";
