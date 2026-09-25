@@ -424,7 +424,8 @@ export function ChatPane() {
                   <SelectTrigger
                     size="sm"
                     aria-label="Model"
-                    className={`${CHIP_TRIGGER} max-w-56`}
+                    title={selectedModelInfo?.name}
+                    className={`${CHIP_TRIGGER} max-w-72`}
                   >
                     <SelectValue placeholder="Model" />
                   </SelectTrigger>
