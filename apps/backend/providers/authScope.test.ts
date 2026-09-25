@@ -7,6 +7,7 @@ import {
   isValidSubProviderId,
   memoizeAsync,
   planOpenCodeLogout,
+  resolveOpenCodeStatus,
 } from "./authScope";
 
 function fakeProvider(
@@ -96,17 +97,19 @@ describe("memoizeAsync", () => {
 });
 
 describe("planOpenCodeLogout", () => {
-  test("no target removes only what Aggcode connected", () => {
+  test("no target removes only what Aggcode connected, and ends the opt-in", () => {
     expect(planOpenCodeLogout(["openrouter", "openai"])).toEqual({
       remove: ["openrouter", "openai"],
       notOwned: [],
+      clearOptIn: true,
     });
   });
 
-  test("a target Aggcode connected is removed", () => {
+  test("a target Aggcode connected is removed, and the opt-in stays", () => {
     expect(planOpenCodeLogout(["openrouter", "openai"], "OpenAI")).toEqual({
       remove: ["openai"],
       notOwned: [],
+      clearOptIn: false,
     });
   });
 
@@ -114,11 +117,70 @@ describe("planOpenCodeLogout", () => {
     expect(planOpenCodeLogout(["openrouter"], "anthropic")).toEqual({
       remove: [],
       notOwned: ["anthropic"],
+      clearOptIn: false,
     });
   });
 
-  test("nothing connected by Aggcode means nothing to remove", () => {
-    expect(planOpenCodeLogout([])).toEqual({ remove: [], notOwned: [] });
+  test("nothing connected by Aggcode still ends the opt-in", () => {
+    expect(planOpenCodeLogout([])).toEqual({
+      remove: [],
+      notOwned: [],
+      clearOptIn: true,
+    });
+  });
+});
+
+describe("resolveOpenCodeStatus", () => {
+  test("opting in to OpenCode as installed is enough to sign in", () => {
+    const status = resolveOpenCodeStatus({
+      externalConnected: [],
+      optedIn: true,
+    });
+    expect(status.providerId).toBe("opencode");
+    expect(status.isAuthenticated).toBe(true);
+    expect(status.method).toBe("local");
+    expect(status.details).toContain("free models");
+    expect(status.connectedSubProviders).toBeUndefined();
+  });
+
+  test("a connected provider signs in without the opt-in", () => {
+    const status = resolveOpenCodeStatus({
+      externalConnected: ["openrouter", "openai"],
+      optedIn: false,
+    });
+    expect(status.isAuthenticated).toBe(true);
+    expect(status.method).toBe("api_key");
+    expect(status.accountName).toBe("openrouter, openai");
+    expect(status.details).toBe("Connected 2 providers: openrouter, openai");
+    expect(status.connectedSubProviders).toEqual(["openrouter", "openai"]);
+  });
+
+  test("one connected provider is described in the singular", () => {
+    const status = resolveOpenCodeStatus({
+      externalConnected: ["openrouter"],
+      optedIn: false,
+    });
+    expect(status.details).toBe("Connected 1 provider: openrouter");
+  });
+
+  test("with both, the connected providers are named", () => {
+    const status = resolveOpenCodeStatus({
+      externalConnected: ["openrouter"],
+      optedIn: true,
+    });
+    expect(status.isAuthenticated).toBe(true);
+    expect(status.connectedSubProviders).toEqual(["openrouter"]);
+  });
+
+  test("neither is not signed in, and says how to fix that", () => {
+    const status = resolveOpenCodeStatus({
+      externalConnected: [],
+      optedIn: false,
+    });
+    expect(status.isAuthenticated).toBe(false);
+    expect(status.method).toBe("none");
+    expect(status.accountName).toBe("Not signed in");
+    expect(status.details).toContain("as installed");
   });
 });
 
